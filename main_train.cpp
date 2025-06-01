@@ -9,16 +9,27 @@
 #include "dataset.hpp"
 #include "config.hpp"
 
+std::string get_last_folder(const std::string &path)
+{
+    std::string cleaned_path = path;
+    while (!cleaned_path.empty() && (cleaned_path.back() == '/' || cleaned_path.back() == '\\'))
+        cleaned_path.pop_back();
+    size_t slash = cleaned_path.find_last_of("/\\");
+    if (slash == std::string::npos)
+        return cleaned_path;
+    return cleaned_path.substr(slash + 1);
+}
+
 int main(int argc, char *argv[])
 {
     bool use_saved_model = false;
     bool epochs_train = false;
-    int epochs = 0; // Default epochs to 1 if not specified
+    int epochs = 0;
     std::string dataset_dir = "./database/MNIST/";
     int train_samples = 0;
     int test_samples = 0;
     bool generate_mnist = false;
-    std::string save_path = "./output/MNIST/mnist_mlp.dat";
+    std::string save_path = "./output/MNIST/final.dat";
     std::string config_path = "config/mnist.txt";
 
     // Procesar argumentos
@@ -108,11 +119,14 @@ int main(int argc, char *argv[])
                  cfg.get_activations());
     }
 
+    std::string dataset_name = get_last_folder(dataset_dir);
+    save_path = "./output/" + dataset_name + "/final.dat";
+
     std::cout << "Training neural network for " << epochs << " epoch(s)...\n";
     if (epochs_train)
-        nn.train_test(X_train, y_train, X_test, y_test, true, "MNIST", epochs);
+        nn.train_test(X_train, y_train, X_test, y_test, true, dataset_name, epochs);
     else
-        nn.train_test(X_train, y_train, X_test, y_test, true, "MNIST");
-    nn.save_data("./output/MNIST/mnist_mlp.dat");
+        nn.train_test(X_train, y_train, X_test, y_test, true, dataset_name);
+    nn.save_data(save_path);
     return 0;
 }

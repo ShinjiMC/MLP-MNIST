@@ -173,6 +173,12 @@ void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector
             std::cout << "Stopping training: early stopping criteria met.\n";
             break;
         }
+        if ((epoch + 1) % 10 == 0)
+        {
+            std::string filename = (output_dir / ("epoch_" + std::to_string(epoch + 1) + ".dat")).string();
+            save_data(filename);
+            std::cout << "Model saved at epoch " << (epoch + 1) << " to " << filename << ".\n";
+        }
         epoch++;
     }
 }
