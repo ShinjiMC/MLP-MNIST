@@ -943,6 +943,20 @@ Y este el gráfico de comparación entre 5 combinaciones de las 9 posibles para 
 
 ![Grafico](.docs/XOR.png)
 
+./build/mlp_train --mnist 60000 10000 --epochs 10 --config ./config/mnist.txt --save_data ./output/MNIST/mnist_mlp.dat
+
+```bash
+./build/mlp_train --mnist 20000 5000 --epochs 1 --config ./config/mnist.txt
+```
+
+```bash
+./build/mlp_train --dataset ./database/MNIST/ --save_data ./output/MNIST/mnist_mlp.dat --epochs 1 --config ./config/mnist.txt
+```
+
+```bash
+./test_model --save_data output/MNIST/mnist_mlp.dat --test dataset/mnist_style.txt
+```
+
 ## Conclusiones
 
 Los resultados del entrenamiento mostraron que, para problemas simples como AND y OR, el perceptrón fue más eficiente, logrando converger en solo 4 épocas con resultados correctos. En cambio, aunque el MLP alcanzó una alta precisión (MSE ≈ 1e-4), requirió muchas más épocas, especialmente para OR (casi 450,000), lo que reflejó una menor eficiencia en estos casos. Sin embargo, el MLP, con su arquitectura más compleja y funciones de activación como Sigmoide–ReLU, ofreció mayor flexibilidad y fue más adecuado para problemas no lineales.

@@ -1,31 +1,44 @@
 #pragma once
+#include <random>
 #include "neuron.hpp"
+#include "activation.hpp"
 
 class Layer
 {
 private:
+    int input_size;
+    int output_size;
     std::vector<Neuron> neurons;
-    std::function<float(float)> activation;
-    std::function<float(float)> activation_derivative;
-    std::vector<float> last_input;
-    std::vector<float> last_z;
+    ActivationType activation;
 
 public:
-    Layer() = default;
-    Layer(int n_neurons, int n_inputs_per_neuron,
-          std::function<float(float)> act,
-          std::function<float(float)> act_deriv);
-    void load_layer(int n_neurons, int n_inputs_per_neuron,
-                    std::function<float(float)> act,
-                    std::function<float(float)> act_deriv,
-                    const std::vector<std::vector<float>> &all_weights,
-                    const std::vector<float> &all_biases);
-    std::vector<float> forward(const std::vector<float> &inputs);
-    std::vector<float> backward(const std::vector<float> &deltas_next,
-                                const std::vector<std::vector<float>> &weights_next);
-    void update_weights(float lr, const std::vector<float> &deltas);
-    const std::vector<float> &get_last_input() const;
-    const std::vector<float> &get_last_z() const;
-    const std::vector<Neuron> &get_neurons() const;
-    std::function<float(float)> get_activation_derivative() const { return activation_derivative; }
+    Layer(int in_size, int out_size, ActivationType act)
+        : input_size(in_size), output_size(out_size), activation(act)
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        double limit = std::sqrt(6.0 / (input_size + output_size));
+        std::uniform_real_distribution<> dis(-limit, limit);
+
+        for (int i = 0; i < output_size; ++i)
+            neurons.emplace_back(input_size, gen, dis);
+    }
+    Layer(int in_size, int out_size, ActivationType act, bool true_random)
+        : input_size(in_size), output_size(out_size), activation(act)
+    {
+        neurons.resize(output_size, Neuron());
+    }
+    void linear_forward(const std::vector<double> &input, std::vector<double> &output);
+
+    // gets
+    int get_input_size() { return input_size; }
+    int get_output_size() { return output_size; }
+    const int get_inputss() const { return input_size; }
+    const int get_outputss() const { return output_size; }
+    std::vector<Neuron> &get_neurons() { return neurons; }
+    const std::vector<Neuron> &get_neuronss() const { return neurons; }
+    ActivationType get_activation() const { return activation; }
+    const int get_neurons_size() const { return neurons.size(); }
+    void save(std::ostream &out, const int i) const;
+    void load(std::istream &in);
 };

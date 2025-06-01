@@ -1,25 +1,31 @@
 #pragma once
 #include <vector>
 #include <functional>
+#include <fstream>
 #include <stdexcept>
 
 class Neuron
 {
 private:
-    std::vector<float> weights;
-    float sesgo;
-    std::function<float(float)> activation;
+    std::vector<double> weights;
+    double bias;
 
 public:
     Neuron() = default;
-    Neuron(int n_inputs, std::function<float(float)> activation_func);
-    void set_weights(const std::vector<float> &new_weights);
-    float get_weight(int id) const;
-    std::vector<float> get_weights() const;
-    void set_sesgo(float new_sesgo);
-    float get_sesgo() const;
 
-    // Update Values
-    void update_weights(const std::vector<float> &inputs, float err, float lr);
-    float forward(const std::vector<float> &inputs);
+    template <typename RNG, typename Dist>
+    Neuron(int n_inputs, RNG &gen, Dist &dis)
+        : weights(n_inputs)
+    {
+        for (int i = 0; i < n_inputs; ++i)
+            weights[i] = dis(gen);
+
+        bias = 0.0;
+    }
+    std::vector<double> &get_weights() { return weights; }
+    double &get_bias() { return bias; }
+    const std::vector<double> &get_weightss() const { return weights; }
+    const double &get_biass() const { return bias; }
+    void save(std::ostream &out) const;
+    void load(std::istream &in, int n_inputs);
 };

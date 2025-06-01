@@ -5,11 +5,15 @@
 class Dataset
 {
 private:
-    std::vector<std::vector<float>> X;
-    std::vector<float> y;
+    std::vector<std::vector<double>> X;
+    std::vector<std::vector<double>> y;
 
 public:
     Dataset(const std::string &filename);
-    const std::vector<std::vector<float>> &get_X() const;
-    const std::vector<float> &get_y() const;
+    Dataset() = default;
+    const std::vector<std::vector<double>> &get_X() const;
+    const std::vector<std::vector<double>> &get_y() const;
+    const std::vector<int> &get_ys() const;
+    void print_data(std::string name) const;
+    void generate_mnist(const std::string &filename, int TRAIN_SAMPLES, int TEST_SAMPLES);
 };

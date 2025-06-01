@@ -7,19 +7,29 @@ include_directories(include)
 
 # Ejecutable de entrenamiento
 add_executable(mlp_train
-    main_train.cpp
-    src/neuron.cpp
-    src/dataset.cpp
-    src/mlp.cpp
-    src/layer.cpp
-    src/config.cpp
+     main_train.cpp
+     src/layer.cpp
+     src/mlp.cpp
+     src/neuron.cpp
+     src/dataset.cpp
+     src/config.cpp
 )
 
 # Ejecutable de prueba
 add_executable(mlp_test
-    main_test.cpp
-    src/neuron.cpp
-    src/dataset.cpp
-    src/mlp.cpp
-    src/layer.cpp
+     main_test.cpp
+     src/layer.cpp
+     src/mlp.cpp
+     src/neuron.cpp
+     src/dataset.cpp
+     src/config.cpp
+)
+
+add_executable(mnist
+     main.cpp
+     src/layer.cpp
+     src/mlp.cpp
+     src/neuron.cpp
+     src/dataset.cpp
+     src/config.cpp
 )

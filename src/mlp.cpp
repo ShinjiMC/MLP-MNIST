@@ -1,106 +1,130 @@
 #include "mlp.hpp"
-#include <cmath>
-#include <iostream>
-#include <fstream>
-#include <algorithm>
-#include <filesystem>
 
-MLP::MLP(const std::vector<int> &sizes,
-         const std::vector<std::function<float(float)>> &activations,
-         const std::vector<std::function<float(float)>> &derivatives,
-         float lr)
-    : learning_rate(lr), activations(activations), derivatives(derivatives),
-      input_size(sizes[0])
+Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
+         double lr, std::vector<ActivationType> activation_types)
+    : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
-    if (sizes.size() < 2 || activations.size() != sizes.size() - 1)
-        throw std::invalid_argument("Invalid layer or activation sizes");
-    for (size_t i = 1; i < sizes.size(); ++i)
-        layers.emplace_back(Layer(sizes[i], sizes[i - 1], activations[i - 1], derivatives[i - 1]));
-}
-
-std::vector<float> MLP::predict(const std::vector<float> &input)
-{
-    std::vector<float> output = input;
-    for (auto &layer : layers)
-        output = layer.forward(output);
-    return output;
-}
-
-float MLP::mse(const std::vector<float> &pred, const std::vector<float> &target)
-{
-    float sum = 0.0f;
-    for (size_t i = 0; i < pred.size(); ++i)
-        sum += (pred[i] - target[i]) * (pred[i] - target[i]);
-    return sum / pred.size();
-}
-
-void MLP::backpropagate(const std::vector<float> &output,
-                        const std::vector<float> &target,
-                        std::vector<std::vector<float>> &all_deltas)
-{
-    // Salida
-    std::vector<float> delta_output(output.size(), 0.0f);
-    const auto &z_out = layers.back().get_last_z();
-    auto act_deriv = layers.back().get_activation_derivative();
-    for (size_t j = 0; j < output.size(); ++j)
-        delta_output[j] = (target[j] - output[j]) * act_deriv(z_out[j]);
-
-    all_deltas.back() = delta_output;
-
-    // Propagación inversa
-    for (int l = layers.size() - 2; l >= 0; --l)
+    if (layer_sizes.size() != activation_types.size())
     {
-        std::vector<std::vector<float>> next_weights;
-        for (const auto &n : layers[l + 1].get_neurons())
-            next_weights.push_back(n.get_weights());
+        throw std::invalid_argument("layer_sizes and activation_types must have the same length.");
+    }
 
-        all_deltas[l] = layers[l].backward(all_deltas[l + 1], next_weights);
+    int prev_size = n_inputs;
+
+    for (size_t i = 0; i < layer_sizes.size(); ++i)
+    {
+        std::cout << "Creating layer " << i + 1
+                  << " with " << layer_sizes[i]
+                  << " neurons and activation " << activation_types[i] << ".\n";
+        layers.emplace_back(prev_size, layer_sizes[i], activation_types[i]);
+        prev_size = layer_sizes[i];
     }
 }
 
-std::pair<float, float> MLP::train_epoch(const std::vector<std::vector<float>> &X,
-                                         const std::vector<std::vector<float>> &Y)
+void Mlp::forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations)
 {
-    float error_total = 0.0f;
-    float correct = 0.0f;
-    for (size_t i = 0; i < X.size(); ++i)
-    {
-        std::vector<float> output = predict(X[i]);
+    activations.clear();
+    activations.push_back(input);
 
-        // Accuracy
-        bool correct_prediction = false;
-        bool is_binary = output.size() == 1;
-        if (is_binary)
-        {
-            bool predicted = output[0] >= 0.5f;
-            bool expected = Y[i][0] >= 0.5f;
-            correct_prediction = predicted == expected;
-        }
+    for (auto &layer : layers)
+    {
+        std::vector<double> output(layer.get_output_size());
+        layer.linear_forward(activations.back(), output);
+        activations.push_back(output);
+    }
+}
+void Mlp::backward(const std::vector<double> &input,
+                   const std::vector<std::vector<double>> &activations,
+                   const std::vector<double> &expected)
+{
+    std::vector<std::vector<double>> deltas(layers.size());
+    for (int l = (int)layers.size() - 1; l >= 0; --l)
+    {
+        int n_neurons = layers[l].get_output_size();
+        deltas[l].resize(n_neurons);
+        if (layers[l].get_activation() == SOFTMAX)
+            for (int i = 0; i < n_neurons; ++i)
+                deltas[l][i] = activations[l + 1][i] - expected[i];
         else
         {
-            int predicted = std::distance(output.begin(), std::max_element(output.begin(), output.end()));
-            int expected = std::distance(Y[i].begin(), std::max_element(Y[i].begin(), Y[i].end()));
-            correct_prediction = predicted == expected;
+            for (int i = 0; i < n_neurons; ++i)
+            {
+                double error = 0.0;
+                for (int j = 0; j < layers[l + 1].get_output_size(); ++j)
+                    error += deltas[l + 1][j] * layers[l + 1].get_neurons()[j].get_weights()[i];
+                if (layers[l].get_activation() == RELU)
+                    deltas[l][i] = error * relu_derivative(activations[l + 1][i]);
+                else if (layers[l].get_activation() == SIGMOID)
+                    deltas[l][i] = error * sigmoid_derivative(activations[l + 1][i]);
+                else // TANH
+                    deltas[l][i] = error * tanh_derivative(activations[l + 1][i]);
+            }
         }
-        if (correct_prediction)
-            ++correct;
-
-        // Backpropagation y update weights
-        std::vector<std::vector<float>> all_deltas(layers.size());
-        backpropagate(output, Y[i], all_deltas);
-        for (size_t l = 0; l < layers.size(); ++l)
-            layers[l].update_weights(learning_rate, all_deltas[l]);
-        error_total += mse(output, Y[i]);
     }
-    float mse_avg = error_total / X.size();
-    float acc = correct / X.size();
-    return {mse_avg, acc};
+
+    // Actualización de pesos y biases
+    for (size_t l = 0; l < layers.size(); ++l)
+    {
+        for (int i = 0; i < layers[l].get_output_size(); ++i)
+        {
+            for (int j = 0; j < layers[l].get_input_size(); ++j)
+                layers[l].get_neurons()[i].get_weights()[j] -= learning_rate * deltas[l][i] * activations[l][j];
+            layers[l].get_neurons()[i].get_bias() -= learning_rate * deltas[l][i];
+        }
+    }
 }
 
-void MLP::train(const std::vector<std::vector<float>> &X,
-                const std::vector<std::vector<float>> &Y,
-                float min_error, bool print,
-                const std::string &dataset_filename)
+void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+                double &average_loss, double &train_accuracy)
+{
+    size_t n = images.size();
+    std::vector<size_t> indices(n);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), std::mt19937{std::random_device{}()});
+
+    std::vector<double> target(n_outputs);
+    std::vector<std::vector<double>> activations;
+    double total_loss = 0.0;
+    int correct = 0;
+
+    for (size_t k = 0; k < n; ++k)
+    {
+        size_t i = indices[k];
+        const auto &input = images[i];
+        int label = labels[i];
+        one_hot_encode(label, target);
+        forward(input, activations);
+
+        total_loss += cross_entropy_loss(activations.back(), target);
+        backward(input, activations, target);
+
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == label)
+            ++correct;
+    }
+    average_loss = total_loss / n;
+    train_accuracy = 100.0 * correct / n;
+}
+
+void Mlp::test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy)
+{
+    int correct = 0;
+    std::vector<std::vector<double>> activations;
+
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        forward(images[i], activations);
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == labels[i])
+            ++correct;
+    }
+
+    test_accuracy = 100.0 * correct / images.size();
+}
+
+void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
+                     const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
+                     bool Test, const std::string &dataset_filename, int epochs)
 {
     std::string base_name = std::filesystem::path(dataset_filename).stem().string();
     std::filesystem::path output_dir = std::filesystem::path("output") / base_name;
@@ -111,230 +135,139 @@ void MLP::train(const std::vector<std::vector<float>> &X,
         std::cerr << "Can't open '" << output_dir / "log.txt" << "' for writing.\n";
         return;
     }
-    int e = 0;
-    float last_mse = 0.0f;
+    int epoch = 0;
+    double average_loss = 0, train_accuracy = 0, test_accuracy = 0;
     while (true)
     {
-        auto [mse_avg, acc] = train_epoch(X, Y);
-        log_epoch(log_file, e, mse_avg, acc);
-        if (print)
-            print_weights(e, mse_avg);
-        if (mse_avg < min_error)
+        // --- Entrenamiento ---
+        clock_t train_start = clock();
+        train(train_images, train_labels, average_loss, train_accuracy);
+        clock_t train_end = clock();
+        double train_time = double(train_end - train_start) / CLOCKS_PER_SEC;
+
+        // --- Evaluación en test (accuracy) ---
+        double test_time = 0.0;
+        if (Test)
         {
-            std::cout << "Training stopped at epoch " << e
-                      << " with MSE: " << mse_avg << "\n";
+            clock_t test_start = clock();
+            test(test_images, test_labels, test_accuracy);
+            clock_t test_end = clock();
+            test_time = double(test_end - test_start) / CLOCKS_PER_SEC;
+        }
+
+        std::ostringstream log_line;
+        log_line << "Epoch " << (epoch + 1)
+                 << ", Train Loss: " << average_loss
+                 << ", Train Acc: " << train_accuracy << "%"
+                 << ", Train Time: " << train_time << "s";
+
+        if (Test)
+            log_line << ", Test Acc: " << test_accuracy << "%"
+                     << ", Test Time: " << test_time << "s";
+
+        std::cout << log_line.str() << std::endl;
+        log_file << log_line.str() << std::endl;
+
+        if (average_loss < 0.001 || test_accuracy > 98.0 || epoch >= epochs)
+        {
+            std::cout << "Stopping training: early stopping criteria met.\n";
             break;
         }
-        if (e == 4000000 && mse_avg == last_mse)
-        {
-            std::cout << "Training stopped at epoch " << e
-                      << " with MSE: " << mse_avg << "\n";
-            break;
-        }
-        e++;
-        last_mse = mse_avg;
+        epoch++;
     }
-    log_file.close();
-    save_final_weights((output_dir / "final.txt").string());
 }
 
-void MLP::log_epoch(std::ofstream &log_file, int epoch, float mse_avg, float acc)
+void Mlp::save_data(const std::string &filename) const
 {
-    log_file << "Epoch " << epoch << " - MSE: " << mse_avg << " - ACC: " << acc << "\n";
-}
-
-void MLP::save_final_weights(const std::string &path)
-{
-    std::ofstream final_file(path);
-    if (!final_file)
+    std::ofstream out(filename);
+    if (!out)
     {
-        std::cerr << "Cant open '" << path << "' for writing.\n";
+        std::cerr << "Error: no se pudo abrir " << filename << " para guardar.\n";
         return;
     }
-    final_file << input_size << " ";
+
+    // Cabecera
+    out << n_inputs << " ";
+    for (auto a : layers)
+        out << a.get_neurons_size() << " ";
+    out << "\n"
+        << learning_rate << "\n";
+
+    // Tipos de activación por capa
+    for (const auto &layer : layers)
+        out << to_string(layer.get_activation()) << " ";
+    out << "\n";
+
+    // Capas y neuronas
     for (size_t i = 0; i < layers.size(); ++i)
-        final_file << layers[i].get_neurons().size() << " ";
-    final_file << learning_rate << "\n";
-
-    for (size_t i = 0; i < activations.size(); ++i)
-        final_file << get_activation_name(activations[i]) << " ";
-    final_file << "\n";
-
-    for (size_t i = 0; i < derivatives.size(); ++i)
-        final_file << get_derivative_name(derivatives[i]) << " ";
-    final_file << "\n";
-    for (size_t l = 0; l < layers.size(); ++l)
-        for (size_t n = 0; n < layers[l].get_neurons().size(); ++n)
-        {
-            const Neuron &neuron = layers[l].get_neurons()[n];
-            final_file << l + 1 << " " << n + 1 << " ";
-            for (auto weight : neuron.get_weights())
-                final_file << weight << " ";
-            final_file << " " << neuron.get_sesgo() << "\n";
-        }
-    final_file.close();
+        layers[i].save(out, i);
+    out.close();
 }
 
-void MLP::print_weights(int epoch, float mse_avg)
+bool Mlp::load_data(const std::string &filename)
 {
-    std::cout << "Epoch " << epoch << " - MSE: " << mse_avg << "\n";
-    std::cout << "Layer | Neuron | Weights | Bias\n";
-    for (size_t l = 0; l < layers.size(); ++l)
+    std::ifstream in(filename);
+    if (!in)
     {
-        for (size_t n = 0; n < layers[l].get_neurons().size(); ++n)
-        {
-            const Neuron &neuron = layers[l].get_neurons()[n];
-            std::cout << l + 1 << " | " << n + 1 << " | ";
-            for (auto weight : neuron.get_weights())
-                std::cout << weight << " ";
-            std::cout << "| " << neuron.get_sesgo() << "\n";
-        }
-    }
-}
-
-bool MLP::load_from_file(const std::string &filename)
-{
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        std::cerr << "Error: Cannot open file " << filename << std::endl;
+        std::cerr << "Error: no se pudo abrir " << filename << " para leer.\n";
         return false;
     }
 
-    // Leer la primera línea completa
-    std::string line;
-    if (!std::getline(file, line))
-    {
-        std::cerr << "Error: Could not read first line from file.\n";
-        return false;
-    }
-
-    std::istringstream iss(line);
-    float possible_float;
+    std::cout << "Cargando MLP desde " << filename << "...\n";
+    // Leer arquitectura
     std::vector<int> layer_sizes;
-    bool found_lr = false;
-    while (iss >> possible_float)
+    std::string line;
+    std::getline(in, line);
+    std::istringstream arch_stream(line);
+    arch_stream >> n_inputs;
+    int size;
+    while (arch_stream >> size)
+        layer_sizes.push_back(size);
+    n_outputs = layer_sizes.back();
+    layer_sizes.pop_back();
+    in >> learning_rate;
+
+    // Leer funciones de activación
+    std::vector<ActivationType> activations(layer_sizes.size() + 1);
+    for (size_t i = 0; i < activations.size(); ++i)
     {
-        int as_int = static_cast<int>(possible_float);
-        if (possible_float == as_int)
-        {
-            layer_sizes.push_back(as_int);
-        }
-        else
-        {
-            this->learning_rate = possible_float;
-            found_lr = true;
-            break;
-        }
+        std::string act;
+        in >> act;
+        activations[i] = from_string(act);
     }
 
-    if (!found_lr)
-    {
-        if (!(iss >> this->learning_rate))
-        {
-            std::cerr << "Error: Could not read learning rate.\n";
-            return false;
-        }
-    }
-
-    if (layer_sizes.empty())
-    {
-        std::cerr << "Error: No layer sizes found in file.\n";
-        return false;
-    }
-
-    std::vector<std::function<float(float)>> activs;
-    for (int i = 0; i < (int)layer_sizes.size() - 1; ++i)
-    {
-        std::string act_name;
-        if (!(file >> act_name))
-        {
-            std::cerr << "Error: Could not read activation function name.\n";
-            return false;
-        }
-        auto it = activation_map.find(act_name);
-        if (it == activation_map.end())
-        {
-            std::cerr << "Error: Unknown activation function: " << act_name << std::endl;
-            return false;
-        }
-        activs.push_back(it->second);
-    }
-
-    std::vector<std::function<float(float)>> derivs;
-    for (int i = 0; i < (int)layer_sizes.size() - 1; ++i)
-    {
-        std::string deriv_name;
-        if (!(file >> deriv_name))
-        {
-            std::cerr << "Error: Could not read derivative function name.\n";
-            return false;
-        }
-        auto it = derivative_map.find(deriv_name);
-        if (it == derivative_map.end())
-        {
-            std::cerr << "Error: Unknown derivative function: " << deriv_name << std::endl;
-            return false;
-        }
-        derivs.push_back(it->second);
-    }
-
-    std::vector<std::vector<std::vector<float>>> all_weights(layer_sizes.size() - 1);
-    std::vector<std::vector<float>> all_biases(layer_sizes.size() - 1);
-    for (size_t i = 0; i < all_weights.size(); ++i)
-    {
-        all_weights[i].resize(layer_sizes[i + 1]);
-        all_biases[i].resize(layer_sizes[i + 1]);
-    }
-
-    while (true)
-    {
-        int layer_idx, neuron_idx;
-        if (!(file >> layer_idx >> neuron_idx))
-            break;
-        layer_idx -= 1;
-        neuron_idx -= 1;
-        if (layer_idx < 0 || layer_idx >= (int)all_weights.size())
-        {
-            std::cerr << "Error: Invalid layer index " << layer_idx + 1 << std::endl;
-            return false;
-        }
-        if (neuron_idx < 0 || neuron_idx >= (int)all_weights[layer_idx].size())
-        {
-            std::cerr << "Error: Invalid neuron index " << neuron_idx + 1 << " in layer " << layer_idx + 1 << std::endl;
-            return false;
-        }
-        int n_inputs_per_neuron = layer_sizes[layer_idx];
-        std::vector<float> weights(n_inputs_per_neuron);
-        for (int w_i = 0; w_i < n_inputs_per_neuron; ++w_i)
-        {
-            if (!(file >> weights[w_i]))
-            {
-                std::cerr << "Error: Could not read weight #" << w_i << " for neuron " << neuron_idx + 1 << " in layer " << layer_idx + 1 << std::endl;
-                return false;
-            }
-        }
-        float bias;
-        if (!(file >> bias))
-        {
-            std::cerr << "Error: Could not read bias for neuron " << neuron_idx + 1 << " in layer " << layer_idx + 1 << std::endl;
-            return false;
-        }
-        all_weights[layer_idx][neuron_idx] = std::move(weights);
-        all_biases[layer_idx][neuron_idx] = bias;
-    }
-
-    file.close();
+    // Construir capas y cargar datos
     layers.clear();
-    for (size_t i = 1; i < layer_sizes.size(); ++i)
+    int prev_size = n_inputs;
+    for (size_t i = 0; i < activations.size(); ++i)
     {
-        int n_neurons = layer_sizes[i];
-        int n_inputs_per_neuron = layer_sizes[i - 1];
-        layers.emplace_back();
-        layers.back().load_layer(n_neurons, n_inputs_per_neuron, activs[i - 1],
-                                 derivs[i - 1], all_weights[i - 1],
-                                 all_biases[i - 1]);
+        int curr_size = (i < layer_sizes.size()) ? layer_sizes[i] : n_outputs;
+        Layer layer(prev_size, curr_size, activations[i], true);
+        layer.load(in);
+        layers.push_back(std::move(layer));
+        prev_size = curr_size;
     }
 
+    in.close();
     return true;
+}
+
+void Mlp::test_info(const std::vector<std::vector<double>> &X_test, const std::vector<int> &y_test)
+{
+    int correct = 0;
+    std::vector<std::vector<double>> activations;
+
+    for (size_t i = 0; i < X_test.size(); ++i)
+    {
+        forward(X_test[i], activations);
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == y_test[i])
+            ++correct;
+
+        std::cout << "Image " << i << " - Output: " << pred << " - Correct: " << y_test[i] << "\n";
+    }
+
+    std::cout << "\nTotal: " << X_test.size() << "\n";
+    std::cout << "Correct: " << correct << "\n";
+    std::cout << "Accuracy: " << 100.0 * correct / X_test.size() << "%\n";
 }

@@ -1,85 +1,51 @@
 #include "layer.hpp"
-
-Layer::Layer(int n_neurons, int n_inputs_per_neuron,
-             std::function<float(float)> act,
-             std::function<float(float)> act_deriv)
-    : activation(act), activation_derivative(act_deriv)
+void Layer::linear_forward(const std::vector<double> &input, std::vector<double> &output)
 {
-    for (int i = 0; i < n_neurons; ++i)
-        neurons.emplace_back(n_inputs_per_neuron, activation);
-}
-
-void Layer::load_layer(int n_neurons, int n_inputs_per_neuron,
-                       std::function<float(float)> act,
-                       std::function<float(float)> act_deriv,
-                       const std::vector<std::vector<float>> &all_weights = {},
-                       const std::vector<float> &all_biases = {})
-{
-    activation = act;
-    activation_derivative = act_deriv;
-    neurons.clear();
-    neurons.reserve(n_neurons);
-    for (int i = 0; i < n_neurons; ++i)
+    for (int i = 0; i < this->output_size; ++i)
     {
-        neurons.emplace_back(n_inputs_per_neuron, act);
-        if (!all_weights.empty() && i < (int)all_weights.size())
-            neurons.back().set_weights(all_weights[i]);
-        if (!all_biases.empty() && i < (int)all_biases.size())
-            neurons.back().set_sesgo(all_biases[i]);
+        output[i] = this->neurons[i].get_biass();
+        for (int j = 0; j < this->input_size; ++j)
+        {
+            output[i] += input[j] * this->neurons[i].get_weightss()[j];
+        }
     }
-    last_input.clear();
-    last_z.clear();
-}
-
-std::vector<float> Layer::forward(const std::vector<float> &inputs)
-{
-    last_input = inputs;
-    last_z.clear();
-    std::vector<float> outputs;
-    for (auto &n : neurons)
+    if (this->activation == SIGMOID)
     {
-        float z = 0.0f;
-        auto weights = n.get_weights();
-        for (size_t i = 0; i < weights.size(); ++i)
-            z += weights[i] * inputs[i];
-        z += n.get_sesgo();
-        last_z.push_back(z);
-        outputs.push_back(activation(z));
+        for (double &val : output)
+            val = sigmoid(val);
     }
-    return outputs;
-}
-
-std::vector<float> Layer::backward(const std::vector<float> &deltas_next,
-                                   const std::vector<std::vector<float>> &weights_next)
-{
-    std::vector<float> deltas(neurons.size(), 0.0f);
-    for (size_t i = 0; i < neurons.size(); ++i)
+    else if (this->activation == RELU)
     {
-        float sum = 0.0f;
-        for (size_t j = 0; j < deltas_next.size(); ++j)
-            sum += weights_next[j][i] * deltas_next[j];
-        deltas[i] = sum * activation_derivative(last_z[i]);
+        for (double &val : output)
+            val = relu(val);
     }
-    return deltas;
+    else if (this->activation == SOFTMAX)
+    {
+        softmax(output, output);
+    }
+    else if (this->activation == TANH)
+    {
+        for (double &val : output)
+            val = tanh(val);
+    }
 }
 
-void Layer::update_weights(float lr, const std::vector<float> &deltas)
+void Layer::save(std::ostream &out, const int i) const
 {
-    for (size_t i = 0; i < neurons.size(); ++i)
-        neurons[i].update_weights(last_input, deltas[i], lr);
+    for (size_t j = 0; j < neurons.size(); ++j)
+    {
+        out << i + 1 << " " << j + 1 << " ";
+        neurons[j].save(out);
+    }
 }
 
-const std::vector<float> &Layer::get_last_input() const
+void Layer::load(std::istream &in)
 {
-    return last_input;
-}
-
-const std::vector<float> &Layer::get_last_z() const
-{
-    return last_z;
-}
-
-const std::vector<Neuron> &Layer::get_neurons() const
-{
-    return neurons;
+    neurons.resize(output_size);
+    for (int j = 0; j < output_size; ++j)
+    {
+        int layer_idx, neuron_idx;
+        in >> layer_idx >> neuron_idx;
+        neurons[j].load(in, input_size);
+    }
 }

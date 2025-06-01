@@ -14,7 +14,9 @@ bool Config::load_config(const std::string &filename, const int inputs)
         std::cerr << "Error: Invalid number of inputs: " << inputs << std::endl;
         return false;
     }
-    this->layer_sizes.push_back(static_cast<int>(inputs));
+    this->layer_sizes.clear();
+    this->activations.clear();
+    this->n_inputs = inputs;
 
     std::string line;
     std::istringstream iss;
@@ -31,9 +33,9 @@ bool Config::load_config(const std::string &filename, const int inputs)
     while (iss >> layer_size)
         this->layer_sizes.push_back(layer_size);
 
-    if (this->layer_sizes.empty())
+    if (this->layer_sizes.size() < 2)
     {
-        std::cerr << "Error: No layer sizes found in file.\n";
+        std::cerr << "Error: Must specify at least one hidden layer and output layer.\n";
         return false;
     }
 
@@ -50,6 +52,7 @@ bool Config::load_config(const std::string &filename, const int inputs)
         std::cerr << "Error: Invalid learning rate.\n";
         return false;
     }
+    int expected_count = static_cast<int>(this->layer_sizes.size());
 
     // Leer funciones de activación
     if (!std::getline(file, line))
@@ -59,7 +62,6 @@ bool Config::load_config(const std::string &filename, const int inputs)
     }
     iss.clear();
     iss.str(line);
-    int expected_count = static_cast<int>(this->layer_sizes.size()) - 1;
     for (int i = 0; i < expected_count; ++i)
     {
         std::string act_name;
@@ -68,42 +70,13 @@ bool Config::load_config(const std::string &filename, const int inputs)
             std::cerr << "Error: Not enough activation functions.\n";
             return false;
         }
-
-        auto it = activation_map.find(act_name);
-        if (it == activation_map.end())
-        {
-            std::cerr << "Error: Unknown activation function: " << act_name << std::endl;
-            return false;
-        }
-
-        this->activations.push_back(it->second);
+        this->activations.push_back(from_string(act_name));
     }
 
-    // Leer funciones derivadas
-    if (!std::getline(file, line))
+    if (activations.size() != expected_count)
     {
-        std::cerr << "Error: Could not read derivative functions line.\n";
+        std::cerr << "Error: Mismatch in number of activations.\n";
         return false;
-    }
-    iss.clear();
-    iss.str(line);
-    for (int i = 0; i < expected_count; ++i)
-    {
-        std::string deriv_name;
-        if (!(iss >> deriv_name))
-        {
-            std::cerr << "Error: Not enough derivative functions.\n";
-            return false;
-        }
-
-        auto it = derivative_map.find(deriv_name);
-        if (it == derivative_map.end())
-        {
-            std::cerr << "Error: Unknown derivative function: " << deriv_name << std::endl;
-            return false;
-        }
-
-        this->derivatives.push_back(it->second);
     }
 
     return true;
@@ -114,15 +87,13 @@ const void Config::print_config()
     std::cout << "==========================\n";
     std::cout << "CONFIGURATION\n";
     std::cout << "Layer Sizes: \n";
+    std::cout << "\t" << n_inputs << " inputs\n";
     for (const auto &size : layer_sizes)
         std::cout << "\t" << size << " neurons\n";
     std::cout << "Learning Rate: " << learning_rate << "\n";
     std::cout << "Activations: \n";
     for (const auto &act : activations)
-        std::cout << "\t" << get_activation_name(act) << "\n";
-    std::cout << "Derivatives: \n";
-    for (const auto &deriv : derivatives)
-        std::cout << "\t" << get_derivative_name(deriv) << "\n";
+        std::cout << "\t" << to_string(act) << "\n";
     std::cout << "==========================\n";
     std::cout << std::endl;
 }

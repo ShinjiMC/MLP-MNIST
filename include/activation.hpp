@@ -1,70 +1,87 @@
 #pragma once
 #include <cmath>
+#include <vector>
+#include <unordered_map>
+#include <string>
+#include <functional>
+#include <algorithm>
 
-inline float sigmoid(float x)
+enum ActivationType
 {
-    return 1.0f / (1.0f + exp(-x));
+    SIGMOID,
+    RELU,
+    TANH,
+    SOFTMAX
+};
+
+// --- Activations ---
+inline double sigmoid(double x)
+{
+    return 1.0 / (1.0 + exp(-x));
 }
 
-inline float sigmoid_derivative(float x)
+inline double sigmoid_derivative(double x)
 {
-    float s = sigmoid(x);
-    return s * (1.0f - s);
+    return x * (1.0 - x);
 }
 
-inline float relu(float x)
+inline double relu(double x)
 {
     return x > 0 ? x : 0;
 }
 
-inline float relu_derivative(float x)
+inline double relu_derivative(double x)
 {
-    return x > 0 ? 1.0f : 0.0f;
+    return x > 0 ? 1 : 0;
 }
 
-inline float tanh_fn(float x)
+inline double tanh_fn(double x)
 {
     return std::tanh(x);
 }
 
-inline float tanh_derivative(float x)
+inline double tanh_derivative(double x)
 {
-    float t = std::tanh(x);
-    return 1.0f - t * t;
+    double t = std::tanh(x);
+    return 1.0 - t * t;
 }
 
-inline std::unordered_map<std::string, std::function<float(float)>> activation_map = {
-    {"sigmoid", sigmoid},
-    {"relu", relu},
-    {"tanh", tanh_fn}};
-
-inline std::unordered_map<std::string, std::function<float(float)>> derivative_map = {
-    {"sigmoid", sigmoid_derivative},
-    {"relu", relu_derivative},
-    {"tanh", tanh_derivative}};
-
-inline std::string get_activation_name(const std::function<float(float)> &func)
+// --- Softmax for vectors ---
+inline void softmax(const std::vector<double> &input, std::vector<double> &output)
 {
-    auto ptr = func.target<float (*)(float)>();
-    if (ptr && *ptr == sigmoid)
-        return "sigmoid";
-    else if (ptr && *ptr == relu)
-        return "relu";
-    else if (ptr && *ptr == tanh_fn)
-        return "tanh";
-    else
-        return "unknown";
+    double max_val = *max_element(input.begin(), input.end());
+    double sum = 0.0;
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        output[i] = exp(input[i] - max_val);
+        sum += output[i];
+    }
+    for (double &val : output)
+        val /= sum;
 }
 
-inline std::string get_derivative_name(const std::function<float(float)> &func)
+// --- Enum ↔ String conversion maps ---
+inline const std::unordered_map<ActivationType, std::string> activation_to_string = {
+    {SIGMOID, "sigmoid"},
+    {RELU, "relu"},
+    {TANH, "tanh"},
+    {SOFTMAX, "softmax"}};
+
+inline const std::unordered_map<std::string, ActivationType> string_to_activation = {
+    {"sigmoid", SIGMOID},
+    {"relu", RELU},
+    {"tanh", TANH},
+    {"softmax", SOFTMAX}};
+
+// --- Utility conversion functions ---
+inline std::string to_string(ActivationType type)
 {
-    auto ptr = func.target<float (*)(float)>();
-    if (ptr && *ptr == sigmoid_derivative)
-        return "sigmoid";
-    else if (ptr && *ptr == relu_derivative)
-        return "relu";
-    else if (ptr && *ptr == tanh_derivative)
-        return "tanh";
-    else
-        return "unknown";
+    auto it = activation_to_string.find(type);
+    return it != activation_to_string.end() ? it->second : "unknown";
+}
+
+inline ActivationType from_string(const std::string &name)
+{
+    auto it = string_to_activation.find(name);
+    return it != string_to_activation.end() ? it->second : SIGMOID;
 }

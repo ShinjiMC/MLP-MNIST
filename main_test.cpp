@@ -1,30 +1,62 @@
 #include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+
 #include "mlp.hpp"
+#include "dataset.hpp"
 
 int main(int argc, char *argv[])
 {
-    if (argc != 4)
+    std::string model_path = "";
+    std::string test_file = "";
+
+    // Leer argumentos
+    for (int i = 1; i < argc; ++i)
     {
-        std::cout << "Use: ./main_test x1 x2 mlp_saved.txt" << std::endl;
+        std::string arg = argv[i];
+        if (arg == "--save_data" && i + 1 < argc)
+            model_path = argv[++i];
+        else if (arg == "--test" && i + 1 < argc)
+            test_file = argv[++i];
+        else
+        {
+            std::cerr << "Unknown or incomplete argument: " << arg << "\n";
+            return 1;
+        }
+    }
+
+    if (model_path.empty())
+    {
+        std::cerr << "Error: --save_data <path_to_model> is required.\n";
         return 1;
     }
-    float x1 = std::stof(argv[1]);
-    float x2 = std::stof(argv[2]);
-    std::string filename = argv[3];
-    MLP mlp;
-    if (!mlp.load_from_file(filename))
+
+    if (test_file.empty())
     {
-        std::cerr << "Error: Could not load MLP from file: " << filename << std::endl;
+        std::cerr << "Error: --test <test_dataset.txt> is required.\n";
         return 1;
     }
-    std::cout << "MLP loaded successfully from " << filename << std::endl;
-    mlp.print_weights(0, 0.0f);
-    std::vector<std::vector<float>> X = {{x1, x2}};
-    std::vector<float> pred = mlp.predict(X[0]);
-    std::cout << "Predictions:\n";
-    std::cout << "(";
-    for (float val : X[0])
-        std::cout << val << " ";
-    std::cout << ") => " << pred[0] << " ≈ " << (pred[0] > 0.5f ? 1 : 0) << "\n";
+
+    // Cargar modelo
+    Mlp nn;
+    if (!nn.load_data(model_path))
+    {
+        std::cerr << "Failed to load model from: " << model_path << "\n";
+        return 1;
+    }
+    std::cout << "Model loaded from " << model_path << "\n";
+
+    // Cargar dataset de prueba
+    Dataset test(test_file);
+    std::vector<std::vector<double>> X_test = test.get_X();
+    std::vector<int> y_test = test.get_ys();
+
+    test.print_data("TEST");
+
+    // Ejecutar evaluación
+    nn.test_info(X_test, y_test);
+
     return 0;
 }

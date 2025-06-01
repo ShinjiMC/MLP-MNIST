@@ -1,37 +1,47 @@
 #pragma once
 #include "layer.hpp"
-#include "activation.hpp"
+#include <ctime>
+#include <iostream>
+#include <fstream>
+#include <filesystem>
 
-class MLP
+class Mlp
 {
 private:
+    int n_inputs;
+    int n_outputs;
+    double learning_rate;
     std::vector<Layer> layers;
-    float learning_rate;
-    int input_size;
-    std::vector<std::function<float(float)>> activations;
-    std::vector<std::function<float(float)>> derivatives;
 
 public:
-    MLP() = default;
-    MLP(const std::vector<int> &sizes,
-        const std::vector<std::function<float(float)>> &activations,
-        const std::vector<std::function<float(float)>> &derivatives,
-        float lr = 0.1);
+    Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
+        double lr, std::vector<ActivationType> activation_types);
+    Mlp() = default;
+    void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations);
+    void backward(const std::vector<double> &input,
+                  const std::vector<std::vector<double>> &activations,
+                  const std::vector<double> &expected);
+    void one_hot_encode(int label, std::vector<double> &target)
+    {
+        std::fill(target.begin(), target.end(), 0.0);
+        target[label] = 1.0;
+    }
+    double cross_entropy_loss(const std::vector<double> &predicted, const std::vector<double> &expected)
+    {
+        double loss = 0.0;
+        const double epsilon = 1e-9;
+        for (size_t i = 0; i < predicted.size(); ++i)
+            loss -= expected[i] * log(predicted[i] + epsilon);
+        return loss;
+    }
 
-    std::vector<float> predict(const std::vector<float> &input);
-    void train(const std::vector<std::vector<float>> &X,
-               const std::vector<std::vector<float>> &Y,
-               float min_error = 0.001f,
-               bool print = false,
-               const std::string &dataset_filename = "databaese.txt");
-    float mse(const std::vector<float> &pred, const std::vector<float> &target);
-    void backpropagate(const std::vector<float> &output,
-                       const std::vector<float> &target,
-                       std::vector<std::vector<float>> &all_deltas);
-    std::pair<float, float> train_epoch(const std::vector<std::vector<float>> &X, const std::vector<std::vector<float>> &Y);
-
-    void log_epoch(std::ofstream &log_file, int epoch, float mse_avg, float acc);
-    void save_final_weights(const std::string &path);
-    void print_weights(int epoch, float mse_avg);
-    bool load_from_file(const std::string &filename);
+    void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+               double &average_loss, double &train_accuracy);
+    void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy);
+    void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
+                    const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
+                    bool Test, const std::string &dataset_filename, int epochs = 1000);
+    void save_data(const std::string &filename) const;
+    bool load_data(const std::string &filename);
+    void test_info(const std::vector<std::vector<double>> &X_test, const std::vector<int> &y_test);
 };
