@@ -46,7 +46,6 @@ inline double tanh_derivative(double x)
     return 1.0 - t * t;
 }
 
-// --- Softmax for vectors ---
 inline void softmax(const std::vector<double> &input, std::vector<double> &output)
 {
     double max_val = *max_element(input.begin(), input.end());
@@ -60,7 +59,6 @@ inline void softmax(const std::vector<double> &input, std::vector<double> &outpu
         val /= sum;
 }
 
-// --- Enum ↔ String conversion maps ---
 inline const std::unordered_map<ActivationType, std::string> activation_to_string = {
     {SIGMOID, "sigmoid"},
     {RELU, "relu"},
@@ -73,7 +71,6 @@ inline const std::unordered_map<std::string, ActivationType> string_to_activatio
     {"tanh", TANH},
     {"softmax", SOFTMAX}};
 
-// --- Utility conversion functions ---
 inline std::string to_string(ActivationType type)
 {
     auto it = activation_to_string.find(type);
