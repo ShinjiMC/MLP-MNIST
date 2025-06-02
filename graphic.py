@@ -2,57 +2,89 @@ import matplotlib.pyplot as plt
 import re
 import os
 
-def cargar_mse_acc_por_epoch(path):
+def cargar_train_test_logs(path):
     epochs = []
-    mses = []
-    accs = []
+    train_losses = []
+    train_accs = []
+    test_accs = []
+
     with open(path, 'r') as f:
         for line in f:
-            match = re.match(r"Epoch\s+(\d+)\s+-\s+MSE:\s+([0-9.eE+-]+)\s+-\s+ACC:\s+([0-9.eE+-]+)", line)
+            match = re.match(
+                r"Epoch\s+(\d+),\s+Train Loss:\s+([0-9.eE+-]+),\s+Train Acc:\s+([0-9.]+)%,\s+Train Time:.*?,\s+Test Acc:\s+([0-9.]+)%",
+                line
+            )
             if match:
                 epochs.append(int(match.group(1)))
-                mses.append(float(match.group(2)))
-                accs.append(float(match.group(3)))
-    return epochs, mses, accs
+                train_losses.append(float(match.group(2)))
+                train_accs.append(float(match.group(3)) / 100)
+                test_accs.append(float(match.group(4)) / 100)
+    return epochs, train_losses, train_accs, test_accs
 
+# Diccionario de logs
 logs = {
-    "XOR": "./output/XOR/log.txt",
-    "AND": "./output/AND/log.txt",
-    "OR":  "./output/OR/log.txt"
+    "MNIST_50": "./output/MNIST_50/log.txt",
+    "MNIST_5": "./output/MNIST_5/log.txt",
+    "MNIST_MINI": "./output/MNIST_MINI/log.txt"
 }
 
-colores = {
-    "XOR": "red",
-    "AND": "green",
-    "OR": "orange"
-}
-
-fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-
-for i, (name, path) in enumerate(logs.items()):
+# Graficar individualmente cada experimento
+for name, path in logs.items():
     if not os.path.exists(path):
         print(f"Archivo no encontrado: {path}")
         continue
 
-    epochs, mses, accs = cargar_mse_acc_por_epoch(path)
-    ax1 = axs[i]
+    epochs, train_losses, train_accs, test_accs = cargar_train_test_logs(path)
 
-    color_mse = colores[name]
-    color_acc = "blue"
+    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f"Entrenamiento y Evaluación - {name}")
 
-    ax1.plot(epochs, mses, color=color_mse, label="MSE", linewidth=2)
-    ax1.set_xlabel("Epochs")
-    ax1.set_ylabel("MSE", color=color_mse)
-    ax1.tick_params(axis='y', labelcolor=color_mse)
-    ax1.set_yscale("log")
-    ax1.set_title(f"{name}")
-    ax1.grid(True)
+    # Gráfico 1: Entrenamiento
+    axs[0].plot(epochs, train_losses, label="Loss", color="red", linewidth=2)
+    axs[0].set_xlabel("Epochs")
+    axs[0].set_ylabel("Loss", color="red")
+    axs[0].tick_params(axis='y', labelcolor="red")
+    axs[0].set_title("Training Loss/Acc")
+    axs[0].grid(True)
 
-    ax2 = ax1.twinx()
-    ax2.plot(epochs, accs, color=color_acc, label="Accuracy", linestyle="--", linewidth=2)
-    ax2.set_ylabel("Accuracy", color=color_acc)
-    ax2.tick_params(axis='y', labelcolor=color_acc)
+    ax2 = axs[0].twinx()
+    ax2.plot(epochs, train_accs, label="Accuracy", color="blue", linestyle="--", linewidth=2)
+    ax2.set_ylabel("Accuracy", color="blue")
+    ax2.tick_params(axis='y', labelcolor="blue")
     ax2.set_ylim(0, 1.05)
 
-plt.tight_layout()
+    # Gráfico 2: Test Accuracy
+    axs[1].plot(epochs, test_accs, label="Test Accuracy", color="green", linewidth=2)
+    axs[1].set_xlabel("Epochs")
+    axs[1].set_ylabel("Test Accuracy")
+    axs[1].set_title("Test Accuracy")
+    axs[1].set_ylim(0, 1.05)
+    axs[1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+# Comparación de sobreajuste y rendimiento externo
+etiquetas = [
+    "MNIST_50 - 50 epochs",
+    "MNIST_50 - 40 epochs",
+    "MNIST_50 - 30 epochs",
+    "MNIST_50 - 20 epochs",
+    "MNIST_50 - 10 epochs",
+    "MNIST_5 - 5 epochs",
+    "MNIST_MINI - 10 epochs"
+]
+epoch_values = [50, 40, 30, 20, 10, 5, 10]
+test_acc_values = [0.32, 0.32, 0.32, 0.32, 0.32, 0.40, 0.42]
+
+plt.figure(figsize=(10, 6))
+plt.plot(epoch_values, test_acc_values, marker='o', linestyle='-', color='purple')
+for i, label in enumerate(etiquetas):
+    plt.text(epoch_values[i], test_acc_values[i] + 0.01, label, fontsize=8, ha='center')
+plt.xlabel("Epochs")
+plt.ylabel("External Test Accuracy")
+plt.title("Comparación de Test Accuracy según tamaño y duración de entrenamiento")
+plt.grid(True)
+plt.ylim(0, 1.0)
 plt.show()
+

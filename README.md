@@ -12,132 +12,631 @@ El **MLP (Perceptrón Multicapa)** es un tipo de red neuronal artificial compues
 
 ### Clase Neuron
 
-La clase `Neuron` es responsable de representar una neurona en una red neuronal, manejando los pesos (weights), el sesgo, y una función de activación (en este caso usaremos escalón por defecto).
+La clase `Neuron` representa una neurona individual dentro de una red neuronal. Está diseñada para ser flexible, permitiendo la inicialización de pesos aleatorios con un generador y distribución personalizados. Maneja un vector de pesos (`weights`) y un sesgo (`bias`), y provee métodos para serializar y deserializar su estado (guardar y cargar desde archivos o flujos de datos).
 
 ```cpp
 class Neuron
 {
 private:
-    std::vector<float> weights;
-    float sesgo;
-    std::function<float(float)> activation;
+    std::vector<double> weights;
+    double bias;
 
 public:
     Neuron() = default;
-    Neuron(int n_inputs, std::function<float(float)> activation_func);
-    void set_weights(const std::vector<float> &new_weights);
-    float get_weight(int id) const;
-    std::vector<float> get_weights() const;
-    void set_sesgo(float new_sesgo);
-    float get_sesgo() const;
 
-    // Update Values
-    void update_weights(const std::vector<float> &inputs, float err, float lr);
-    float forward(const std::vector<float> &inputs);
+    template <typename RNG, typename Dist>
+    Neuron(int n_inputs, RNG &gen, Dist &dis);
+
+    std::vector<double> &get_weights();
+    double &get_bias();
+    const std::vector<double> &get_weightss() const;
+    const double &get_biass() const;
+
+    void save(std::ostream &out) const;
+    void load(std::istream &in, int n_inputs);
+};
+```
+
+#### Constructor por Defecto
+
+Inicializa una neurona sin pesos ni sesgo definidos. Es útil cuando los pesos se cargarán más adelante mediante el método `load`.
+
+```cpp
+Neuron() = default;
+```
+
+#### Constructor Parametrizado con Generador Aleatorio
+
+Este constructor inicializa la neurona con un número especificado de entradas (`n_inputs`). Cada peso se asigna aleatoriamente usando una distribución (`dis`) y un generador de números aleatorios (`gen`), lo que permite gran flexibilidad para pruebas o inicializaciones personalizadas (por ejemplo, normal, uniforme, etc.). El sesgo (`bias`) se inicializa a cero.
+
+```cpp
+template <typename RNG, typename Dist>
+Neuron(int n_inputs, RNG &gen, Dist &dis)
+    : weights(n_inputs)
+{
+    for (int i = 0; i < n_inputs; ++i)
+        weights[i] = dis(gen);
+
+    bias = 0.0;
+}
+```
+
+#### Métodos de Acceso (GET)
+
+- `get_weights` y `get_weightss` devuelven referencias a los pesos, para permitir lectura y modificación directa.
+
+  ```cpp
+  std::vector<double> &get_weights();                 // Versión modificable
+  const std::vector<double> &get_weightss() const;    // Versión de solo lectura
+  ```
+
+- `get_bias` y `get_biass` devuelven referencias al sesgo.
+
+  ```cpp
+  double &get_bias();               // Versión modificable
+  const double &get_biass() const; // Versión de solo lectura
+  ```
+
+#### Guardado de la Neurona
+
+Este método escribe todos los pesos y el sesgo en un flujo de salida (`std::ostream`), separándolos por espacios. Es útil para guardar el estado de la neurona en un archivo de texto o binario.
+
+```cpp
+void Neuron::save(std::ostream &out) const
+{
+    for (const auto &w : weights)
+        out << w << " ";
+    out << bias << "\n";
+}
+```
+
+#### Carga de la Neurona
+
+Este método lee los pesos y el sesgo desde un flujo de entrada (`std::istream`). Es importante especificar cuántos pesos se esperan (`n_inputs`) para poder redimensionar adecuadamente el vector.
+
+```cpp
+void Neuron::load(std::istream &in, int n_inputs)
+{
+    weights.resize(n_inputs);
+    for (int i = 0; i < n_inputs; ++i)
+        in >> weights[i];
+    in >> bias;
+}
+```
+
+---
+
+### Clase Layer
+
+La clase `Layer` representa una capa de una red neuronal multicapa. Cada capa contiene un conjunto de neuronas (`Neuron`) y una función de activación asociada. Esta clase se encarga de inicializar, propagar hacia adelante (forward pass) de forma lineal y aplicar la activación, así como de guardar y cargar sus parámetros desde archivos.
+
+```cpp
+class Layer
+{
+private:
+    int input_size;
+    int output_size;
+    std::vector<Neuron> neurons;
+    ActivationType activation;
+
+public:
+    Layer(int in_size, int out_size, ActivationType act);
+    Layer(int in_size, int out_size, ActivationType act, bool true_random);
+    void linear_forward(const std::vector<double> &input, std::vector<double> &output);
+
+    // Getters
+    int get_input_size();
+    int get_output_size();
+    const int get_inputss() const;
+    const int get_outputss() const;
+    std::vector<Neuron> &get_neurons();
+    const std::vector<Neuron> &get_neuronss() const;
+    ActivationType get_activation() const;
+    const int get_neurons_size() const;
+
+    // I/O
+    void save(std::ostream &out, const int i) const;
+    void load(std::istream &in);
+};
+```
+
+#### Constructores
+
+##### Constructor con inicialización aleatoria
+
+Este constructor crea una capa con `output_size` neuronas, cada una con `input_size` entradas. Los pesos se inicializan aleatoriamente con una distribución uniforme en el rango [-limit, limit], donde:
+
+![Funcion Limite](.docs/f1.png)
+
+Esto mejora la inicialización para evitar problemas de desvanecimiento del gradiente.
+
+```cpp
+Layer(int in_size, int out_size, ActivationType act)
+    : input_size(in_size), output_size(out_size), activation(act)
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    double limit = std::sqrt(6.0 / (input_size + output_size));
+    std::uniform_real_distribution<> dis(-limit, limit);
+
+    for (int i = 0; i < output_size; ++i)
+        neurons.emplace_back(input_size, gen, dis);
+}
+```
+
+##### Constructor sin inicialización aleatoria
+
+Este constructor crea una capa con neuronas vacías, útil cuando se desea cargar los pesos desde un archivo.
+
+```cpp
+Layer(int in_size, int out_size, ActivationType act, bool true_random)
+    : input_size(in_size), output_size(out_size), activation(act)
+{
+    neurons.resize(output_size, Neuron());
+}
+```
+
+#### Propagación hacia Adelante (linear_forward)
+
+El método `linear_forward` aplica la operación de propagación hacia adelante en una capa, realizando la multiplicación de cada neurona:
+
+![Funcion forward](.docs/f2.png)
+
+```cpp
+void Layer::linear_forward(const std::vector<double> &input, std::vector<double> &output)
+{
+    for (int i = 0; i < output_size; ++i)
+    {
+        output[i] = neurons[i].get_biass();
+        for (int j = 0; j < input_size; ++j)
+        {
+            output[i] += input[j] * neurons[i].get_weightss()[j];
+        }
+    }
+
+    if (activation == SIGMOID)
+        for (double &val : output) val = sigmoid(val);
+    else if (activation == RELU)
+        for (double &val : output) val = relu(val);
+    else if (activation == SOFTMAX)
+        softmax(output, output);
+    else if (activation == TANH)
+        for (double &val : output) val = tanh(val);
+}
+```
+
+#### Métodos de Guardado y Carga
+
+Permiten serializar y deserializar la información de las neuronas de la capa. Se guarda cada neurona con su índice de capa y de posición:
+
+```cpp
+void Layer::save(std::ostream &out, const int i) const
+{
+    for (size_t j = 0; j < neurons.size(); ++j)
+    {
+        out << i + 1 << " " << j + 1 << " ";
+        neurons[j].save(out);
+    }
+}
+```
+
+```cpp
+void Layer::load(std::istream &in)
+{
+    neurons.resize(output_size);
+    for (int j = 0; j < output_size; ++j)
+    {
+        int layer_idx, neuron_idx;
+        in >> layer_idx >> neuron_idx;
+        neurons[j].load(in, input_size);
+    }
+}
+```
+
+#### Métodos GET
+
+Permiten acceder a información relevante de la capa, incluyendo el número de entradas y salidas, el tipo de activación y la lista de neuronas:
+
+```cpp
+int get_input_size();                  // Devuelve la cantidad de entradas
+int get_output_size();                 // Devuelve la cantidad de salidas
+const std::vector<Neuron> &get_neuronss() const; // Neuronas (solo lectura)
+std::vector<Neuron> &get_neurons();    // Neuronas (modificable)
+ActivationType get_activation() const; // Tipo de activación usado
+```
+
+---
+
+Claro, aquí tienes una **explicación completa de la clase `Mlp`** siguiendo el estilo del template anterior:
+
+---
+
+### Clase Mlp
+
+La clase `Mlp` (Multilayer Perceptron) representa una **red neuronal multicapa** compuesta por múltiples capas (`Layer`), cada una con su propio conjunto de neuronas y función de activación. Esta clase maneja el _forward pass_, el _backward pass_, el entrenamiento, evaluación, guardado y carga del modelo, orientada a tareas de clasificación como el dataset MNIST.
+
+```cpp
+class Mlp
+{
+private:
+    int n_inputs;
+    int n_outputs;
+    double learning_rate;
+    std::vector<Layer> layers;
+
+public:
+    Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
+        double lr, std::vector<ActivationType> activation_types);
+    Mlp() = default;
+    void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations);
+    void backward(const std::vector<double> &input,
+                  const std::vector<std::vector<double>> &activations,
+                  const std::vector<double> &expected);
+    void one_hot_encode(int label, std::vector<double> &target);
+    double cross_entropy_loss(const std::vector<double> &predicted, const std::vector<double> &expected);
+    void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+               double &average_loss, double &train_accuracy);
+    void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy);
+    void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
+                    const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
+                    bool Test, const std::string &dataset_filename, int epochs = 1000);
+    void save_data(const std::string &filename) const;
+    bool load_data(const std::string &filename);
+    void test_info(const std::vector<std::vector<double>> &X_test, const std::vector<int> &y_test);
 };
 ```
 
 #### Constructor
 
-Inicializa los pesos en base a la cantidad de entradas y el sesgo de la neurona, y la personalización de la función de activación (por defecto se utiliza la función escalón).
+Este constructor crea e inicializa una red neuronal multicapa (MLP) configurando su arquitectura y parámetros principales. Recibe el número de entradas (`n_inputs`), una lista con el tamaño de cada capa oculta (`layer_sizes`), el número de salidas (`n_outputs`), la tasa de aprendizaje (`lr`), y las funciones de activación para cada capa (`activation_types`). Primero verifica que la cantidad de capas coincida con la cantidad de funciones de activación. Luego, recorre cada capa, construyendo objetos `Layer` con el tamaño correspondiente (entradas y salidas) y su función de activación asociada. Este proceso establece la estructura completa de la red, desde las entradas hasta la última capa, lista para el entrenamiento.
 
 ```cpp
-Neuron::Neuron(int n_inputs, std::function<float(float)> activation_func)
+Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
+         double lr, std::vector<ActivationType> activation_types)
+    : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
-    if (n_inputs <= 0)
-        throw std::invalid_argument("Number of inputs must be positive");
-    weights.resize(n_inputs, 0);
-    sesgo = 0.0f;
-    activation = activation_func ? activation_func : [](float x)
-    { return x >= 0 ? 1.0f : 0.0f; };
+    if (layer_sizes.size() != activation_types.size())
+    {
+        throw std::invalid_argument("layer_sizes and activation_types must have the same length.");
+    }
+    int prev_size = n_inputs;
+    for (size_t i = 0; i < layer_sizes.size(); ++i)
+    {
+        layers.emplace_back(prev_size, layer_sizes[i], activation_types[i]);
+        prev_size = layer_sizes[i];
+    }
 }
 ```
 
-#### Métodos GET y SET
+#### `forward`
 
-- `set_weights`: Establece un nuevo conjunto de pesos.
-  ```cpp
-    void Neuron::set_weights(const std::vector<float> &new_weights)
-    {
-        if (new_weights.size() != weights.size())
-            throw std::invalid_argument("Size of weights /= n inputs");
-        weights = new_weights;
-    }
-  ```
-- `get_weight`: Obtiene el peso en una posición específica.
-
-  ```cpp
-    float Neuron::get_weight(int id) const
-    {
-        if (id < 0 || id >= weights.size())
-            throw std::out_of_range("Id out of range");
-        return weights[id];
-    }
-  ```
-
-- `get_weights`: Devuelve todos los pesos en un vector.
-
-  ```cpp
-    std::vector<float> Neuron::get_weights() const
-    {
-        return weights;
-    }
-  ```
-
-- `set_sesgo`: Establece el valor del sesgo.
-
-  ```cpp
-    void Neuron::set_sesgo(float new_sesgo)
-    {
-        sesgo = new_sesgo;
-    }
-  ```
-
-- `get_sesgo`: Obtiene el valor del sesgo.
-
-  ```cpp
-    float Neuron::get_sesgo() const
-    {
-        return sesgo;
-    }
-  ```
-
-#### Función de actualización de pesos
-
-Recibe los valores de entrada, el error (diferencia entre la salida esperada y la salida real) y la tasa de aprendizaje del entrenamiento realizado en una epoch. Con ello se ajustan los pesos y el sesgo de acuerdo con la regla de actualización de perceptrón (regla delta):
-
-**Regla Delta:** Para cada peso w_i:
-
-![Ejecución make](.docs/f6.png)
-
-Y para el sesgo b:
-
-![Ejecución make](.docs/f5.png)
+La función `forward` implementa la propagación hacia adelante en la red neuronal, calculando las salidas capa por capa a partir de una entrada dada. Comienza limpiando el vector de activaciones y almacenando la entrada original como la primera activación. Luego, para cada capa en la red, se crea un vector de salida del tamaño adecuado y se calcula la salida de la capa usando la función `linear_forward`, que aplica los pesos, el sesgo y la función de activación correspondiente. Cada resultado se añade a la lista de activaciones, permitiendo conservar el estado completo de la red en cada paso, lo cual es fundamental para el posterior proceso de retropropagación (`backward`).
 
 ```cpp
-void Neuron::update_weights(const std::vector<float> &inputs, float err, float lr)
+void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations)
 {
-    if (inputs.size() != weights.size())
-        throw std::invalid_argument("Size of inputs /= n inputs");
-    for (size_t i = 0; i < weights.size(); i++)
-        weights[i] += lr * err * inputs[i];
-    sesgo += lr * err;
+    activations.clear();
+    activations.push_back(input);
+
+    for (auto &layer : layers)
+    {
+        std::vector<double> output(layer.get_output_size());
+        layer.linear_forward(activations.back(), output);
+        activations.push_back(output);
+    }
 }
 ```
 
-#### Función Forward (Propagación hacia Adelante)
+#### `backward`
 
-Calcula la salida de la neurona dados los valores de entrada. La salida se obtiene realizando la suma ponderada de las entradas (producto de cada entrada por su peso respectivo), añadiendo el sesgo y pasando el resultado a través de la función de activación (como en la formula de la Introducción):
+Implementa la retropropagación del error desde la capa de salida hacia las capas anteriores, calculando los deltas (gradientes) para cada neurona según la diferencia entre la salida actual y la esperada, ajustada por la derivada de la función de activación. Luego, utiliza estos deltas para actualizar los pesos y sesgos de cada neurona, aplicando la regla del gradiente descendente con la tasa de aprendizaje, con el fin de minimizar el error de la red.
 
 ```cpp
-float Neuron::forward(const std::vector<float> &inputs)
+void backward(const std::vector<double> &input,
+                   const std::vector<std::vector<double>> &activations,
+                   const std::vector<double> &expected)
 {
-    if (inputs.size() != weights.size())
-        throw std::invalid_argument("Size of inputs /= n inputs");
-    float a = sesgo;
-    for (size_t i = 0; i < weights.size(); i++)
-        a += weights[i] * inputs[i];
-    return activation(a);
+    std::vector<std::vector<double>> deltas(layers.size());
+    for (int l = (int)layers.size() - 1; l >= 0; --l)
+    {
+        int n_neurons = layers[l].get_output_size();
+        deltas[l].resize(n_neurons);
+        if (layers[l].get_activation() == SOFTMAX)
+            for (int i = 0; i < n_neurons; ++i)
+                deltas[l][i] = activations[l + 1][i] - expected[i];
+        else
+        {
+            for (int i = 0; i < n_neurons; ++i)
+            {
+                double error = 0.0;
+                for (int j = 0; j < layers[l + 1].get_output_size(); ++j)
+                    error += deltas[l + 1][j] * layers[l + 1].get_neurons()[j].get_weights()[i];
+                if (layers[l].get_activation() == RELU)
+                    deltas[l][i] = error * relu_derivative(activations[l + 1][i]);
+                else if (layers[l].get_activation() == SIGMOID)
+                    deltas[l][i] = error * sigmoid_derivative(activations[l + 1][i]);
+                else // TANH
+                    deltas[l][i] = error * tanh_derivative(activations[l + 1][i]);
+            }
+        }
+    }
+
+    // Actualización de pesos y biases
+    for (size_t l = 0; l < layers.size(); ++l)
+    {
+        for (int i = 0; i < layers[l].get_output_size(); ++i)
+        {
+            for (int j = 0; j < layers[l].get_input_size(); ++j)
+                layers[l].get_neurons()[i].get_weights()[j] -= learning_rate * deltas[l][i] * activations[l][j];
+            layers[l].get_neurons()[i].get_bias() -= learning_rate * deltas[l][i];
+        }
+    }
+```
+
+#### `one_hot_encode`
+
+Convierte una clase (por ejemplo, `3`) a un vector one-hot (por ejemplo, `[0, 0, 0, 1, 0, 0, 0, 0, 0, 0]`), para facilitar la representación de etiquetas en problemas de clasificación.
+
+```cpp
+void one_hot_encode(int label, std::vector<double> &target)
+{
+    std::fill(target.begin(), target.end(), 0.0);
+    target[label] = 1.0;
+}
+```
+
+#### `cross_entropy_loss`
+
+Calcula la pérdida entre la salida predicha y la esperada usando la función de entropía cruzada, sumando el producto negativo de la etiqueta esperada por el logaritmo de la probabilidad predicha, con un pequeño valor `epsilon` para evitar errores numéricos, siendo ideal para problemas de clasificación multiclase con salida softmax.
+
+```cpp
+double cross_entropy_loss(const std::vector<double> &predicted, const std::vector<double> &expected)
+{
+    double loss = 0.0;
+    const double epsilon = 1e-9;
+    for (size_t i = 0; i < predicted.size(); ++i)
+        loss -= expected[i] * log(predicted[i] + epsilon);
+    return loss;
+}
+```
+
+#### `train`
+
+Entrena la red usando un conjunto de imágenes y etiquetas realizando un pase completo para cada muestra: primero convierte la etiqueta a vector one-hot, luego ejecuta la propagación hacia adelante para obtener la predicción, calcula la pérdida con entropía cruzada y aplica la retropropagación para ajustar los pesos. Además, acumula la pérdida total y cuenta las predicciones correctas para actualizar la pérdida promedio y la precisión de entrenamiento al finalizar el ciclo.
+
+```cpp
+void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+        double &average_loss, double &train_accuracy)
+{
+    size_t n = images.size();
+    std::vector<size_t> indices(n);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), std::mt19937{std::random_device{}()});
+
+    std::vector<double> target(n_outputs);
+    std::vector<std::vector<double>> activations;
+    double total_loss = 0.0;
+    int correct = 0;
+
+    for (size_t k = 0; k < n; ++k)
+    {
+        size_t i = indices[k];
+        const auto &input = images[i];
+        int label = labels[i];
+        one_hot_encode(label, target);
+        forward(input, activations);
+
+        total_loss += cross_entropy_loss(activations.back(), target);
+        backward(input, activations, target);
+
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == label)
+            ++correct;
+    }
+    average_loss = total_loss / n;
+    train_accuracy = 100.0 * correct / n;
+}
+```
+
+#### `test`
+
+Evalúa la red sobre un conjunto de datos de prueba sin modificar los pesos, realizando una propagación hacia adelante para cada muestra y calculando la precisión como el porcentaje de predicciones correctas respecto a las etiquetas reales.
+
+```cpp
+void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy)
+{
+    int correct = 0;
+    std::vector<std::vector<double>> activations;
+
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        forward(images[i], activations);
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == labels[i])
+            ++correct;
+    }
+
+    test_accuracy = 100.0 * correct / images.size();
+}
+```
+
+#### `train_test`
+
+Gestiona el ciclo completo de entrenamiento y evaluación de la red durante un número determinado de épocas, ejecutando en cada época el entrenamiento con el conjunto de datos de entrenamiento y, opcionalmente, la evaluación con el conjunto de prueba para medir la precisión. Además, registra el progreso en un archivo de log, muestra estadísticas por consola, guarda el modelo periódicamente y detiene el proceso anticipadamente si se cumplen criterios de convergencia o precisión deseada.
+
+```cpp
+void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
+                     const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
+                     bool Test, const std::string &dataset_filename, int epochs=1000)
+{
+    std::string base_name = std::filesystem::path(dataset_filename).stem().string();
+    std::filesystem::path output_dir = std::filesystem::path("output") / base_name;
+    std::filesystem::create_directories(output_dir);
+    std::ofstream log_file(output_dir / "log.txt");
+    if (!log_file)
+    {
+        std::cerr << "Can't open '" << output_dir / "log.txt" << "' for writing.\n";
+        return;
+    }
+    int epoch = 0;
+    double average_loss = 0, train_accuracy = 0, test_accuracy = 0;
+    while (true)
+    {
+        // --- Entrenamiento ---
+        clock_t train_start = clock();
+        train(train_images, train_labels, average_loss, train_accuracy);
+        clock_t train_end = clock();
+        double train_time = double(train_end - train_start) / CLOCKS_PER_SEC;
+
+        // --- Evaluación en test (accuracy) ---
+        double test_time = 0.0;
+        if (Test)
+        {
+            clock_t test_start = clock();
+            test(test_images, test_labels, test_accuracy);
+            clock_t test_end = clock();
+            test_time = double(test_end - test_start) / CLOCKS_PER_SEC;
+        }
+
+        std::ostringstream log_line;
+        log_line << "Epoch " << (epoch + 1)
+                 << ", Train Loss: " << average_loss
+                 << ", Train Acc: " << train_accuracy << "%"
+                 << ", Train Time: " << train_time << "s";
+
+        if (Test)
+            log_line << ", Test Acc: " << test_accuracy << "%"
+                     << ", Test Time: " << test_time << "s";
+
+        std::cout << log_line.str() << std::endl;
+        log_file << log_line.str() << std::endl;
+
+        if (average_loss < 0.001 || test_accuracy > 98.0 || epoch >= epochs)
+        {
+            std::cout << "Stopping training: early stopping criteria met.\n";
+            break;
+        }
+        if ((epoch + 1) % 10 == 0)
+        {
+            std::string filename = (output_dir / ("epoch_" + std::to_string(epoch + 1) + ".dat")).string();
+            save_data(filename);
+            std::cout << "Model saved at epoch " << (epoch + 1) << " to " << filename << ".\n";
+        }
+        epoch++;
+    }
+}
+```
+
+#### `save_data`
+
+Guarda en un archivo el estado completo del modelo, incluyendo la arquitectura (número de entradas, neuronas por capa), tasa de aprendizaje, funciones de activación y los pesos y sesgos de cada neurona. Este proceso se realiza delegando la serialización específica a cada capa mediante su método `save`.
+
+```cpp
+void save_data(const std::string &filename) const
+{
+    std::ofstream out(filename);
+    if (!out)
+    {
+        std::cerr << "Error: no se pudo abrir " << filename << " para guardar.\n";
+        return;
+    }
+
+    // Cabecera
+    out << n_inputs << " ";
+    for (auto a : layers)
+        out << a.get_neurons_size() << " ";
+    out << "\n"
+        << learning_rate << "\n";
+
+    // Tipos de activación por capa
+    for (const auto &layer : layers)
+        out << to_string(layer.get_activation()) << " ";
+    out << "\n";
+
+    // Capas y neuronas
+    for (size_t i = 0; i < layers.size(); ++i)
+        layers[i].save(out, i);
+    out.close();
+}
+```
+
+#### `load_data`
+
+Carga la configuración completa del modelo desde un archivo, reconstruyendo la arquitectura (número de entradas, neuronas por capa), la tasa de aprendizaje y las funciones de activación. Luego, crea las capas correspondientes y recupera los pesos y sesgos de cada neurona llamando a su método `load`, dejando el modelo listo para usarse.
+
+```cpp
+bool load_data(const std::string &filename)
+{
+    std::ifstream in(filename);
+    if (!in)
+    {
+        std::cerr << "Error: no se pudo abrir " << filename << " para leer.\n";
+        return false;
+    }
+
+    std::cout << "Cargando MLP desde " << filename << "...\n";
+    // Leer arquitectura
+    std::vector<int> layer_sizes;
+    std::string line;
+    std::getline(in, line);
+    std::istringstream arch_stream(line);
+    arch_stream >> n_inputs;
+    int size;
+    while (arch_stream >> size)
+        layer_sizes.push_back(size);
+    n_outputs = layer_sizes.back();
+    layer_sizes.pop_back();
+    in >> learning_rate;
+
+    // Leer funciones de activación
+    std::vector<ActivationType> activations(layer_sizes.size() + 1);
+    for (size_t i = 0; i < activations.size(); ++i)
+    {
+        std::string act;
+        in >> act;
+        activations[i] = from_string(act);
+    }
+
+    // Construir capas y cargar datos
+    layers.clear();
+    int prev_size = n_inputs;
+    for (size_t i = 0; i < activations.size(); ++i)
+    {
+        int curr_size = (i < layer_sizes.size()) ? layer_sizes[i] : n_outputs;
+        Layer layer(prev_size, curr_size, activations[i], true);
+        layer.load(in);
+        layers.push_back(std::move(layer));
+        prev_size = curr_size;
+    }
+
+    in.close();
+    return true;
+}
+```
+
+#### `test_info`
+
+Evalúa la red y muestra detalles como las predicciones vs etiquetas reales para fines de diagnóstico o visualización de errores.
+
+```cpp
+void test_info(const std::vector<std::vector<double>> &X_test, const std::vector<int> &y_test)
+{
+    int correct = 0;
+    std::vector<std::vector<double>> activations;
+
+    for (size_t i = 0; i < X_test.size(); ++i)
+    {
+        forward(X_test[i], activations);
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == y_test[i])
+            ++correct;
+
+        std::cout << "Image " << i << " - Output: " << pred << " - Correct: " << y_test[i] << "\n";
+    }
+
+    std::cout << "\nTotal: " << X_test.size() << "\n";
+    std::cout << "Correct: " << correct << "\n";
+    std::cout << "Accuracy: " << 100.0 * correct / X_test.size() << "%\n";
 }
 ```
 
@@ -145,35 +644,32 @@ float Neuron::forward(const std::vector<float> &inputs)
 
 ### Clase Dataset
 
-Permite cargar conjuntos de datos desde un archivo de texto y proporciona acceso seguro a las matrices de entradas (`X`) y salidas esperadas (`y`), facilitando la generación autónoma de entrenamiento, sin depender de modificaciones internas del código.
+La clase `Dataset` se encarga de almacenar y manejar conjuntos de datos para el entrenamiento y prueba de redes neuronales. Soporta la carga de archivos de texto con datos estructurados (como los generados desde MNIST) y provee funciones para acceder y visualizar el conjunto de datos.
 
 ```cpp
 class Dataset
 {
 private:
-    std::vector<std::vector<float>> X;
-    std::vector<float> y;
+    std::vector<std::vector<double>> X; // Vectores de entrada
+    std::vector<std::vector<double>> y; // Vectores de salida
 
 public:
     Dataset(const std::string &filename);
-    const std::vector<std::vector<float>> &get_X() const;
-    const std::vector<float> &get_y() const;
+    Dataset() = default;
+    const std::vector<std::vector<double>> &get_X() const;
+    const std::vector<std::vector<double>> &get_y() const;
+    const std::vector<int> &get_ys() const;
+    void print_data(std::string name) const;
+    void generate_mnist(const std::string &filename, int TRAIN_SAMPLES, int TEST_SAMPLES);
 };
 ```
 
-#### Constructor
+#### Constructor con archivo
 
-Recibe un archivo como entrada y con ese archivo logra recibir en la primera linea `n_inputs` y `n_options`, para conocer cuantas entradas se haran y cuantas opciones de mezcla hay. Luego genera las dos listas de entradas y salidas esperadas que estan en las siguientes líneas.
+Este constructor carga un dataset desde un archivo de texto con el siguiente formato:
 
-Ejemplo de archivo `OR.txt`:
-
-```bash
-2 4
-0 0 0
-0 1 1
-1 0 1
-1 1 1
-```
+- Primera línea: dos enteros `n_inputs` y `n_outputs`.
+- Líneas siguientes: `n_inputs` valores reales seguidos de `n_outputs` valores (en one-hot).
 
 ```cpp
 Dataset::Dataset(const std::string &filename)
@@ -182,672 +678,421 @@ Dataset::Dataset(const std::string &filename)
     if (!file.is_open())
         throw std::runtime_error("Cant open file: " + filename);
 
-    int n_inputs, n_options;
-    file >> n_inputs >> n_options;
-    if (n_inputs < 1 || n_options < 1)
-        throw std::runtime_error("Invalid number of inputs or options in file: " + filename);
+    int n_inputs, n_outputs;
+    file >> n_inputs >> n_outputs;
+    if (n_inputs < 1 || n_outputs < 1)
+        throw std::runtime_error("Invalid number of inputs or options in file");
+
     X.clear();
     y.clear();
 
-    for (size_t i = 0; i < n_options; i++)
+    std::vector<double> input_row(n_inputs);
+    std::vector<double> output_row(n_outputs);
+
+    while (file)
     {
-        float output;
-        std::vector<float> row(n_inputs);
-        for (size_t j = 0; j < n_inputs; j++)
-            file >> row[j];
-        file >> output;
-        X.push_back(row);
-        y.push_back(output);
+        for (int i = 0; i < n_inputs; ++i)
+            if (!(file >> input_row[i]))
+                return;
+
+        for (int j = 0; j < n_outputs; ++j)
+            if (!(file >> output_row[j]))
+                throw std::runtime_error("Unexpected end of file while reading output vector");
+
+        X.push_back(input_row);
+        y.push_back(output_row);
     }
+
     file.close();
 }
 ```
 
 #### Métodos GET
 
-- `get_X`: Retorna la lista X
+- `get_X`: Devuelve todos los vectores de entrada (features).
+
+  ```cpp
+  const std::vector<std::vector<double>> &Dataset::get_X() const
+  {
+      return X;
+  }
+  ```
+
+- `get_y`: Devuelve todos los vectores de salida (normalmente en one-hot).
+
+  ```cpp
+  const std::vector<std::vector<double>> &Dataset::get_y() const
+  {
+      return y;
+  }
+  ```
+
+- `get_ys`: Devuelve un vector con la clase esperada de cada muestra (entero entre 0 y 9 si es MNIST), identificada como la posición del mayor valor en el vector de salida (útil para evaluación).
+
+  ```cpp
+  const std::vector<int> &Dataset::get_ys() const
+  {
+      static std::vector<int> ys;
+      ys.clear();
+      for (const auto &output_row : y)
+      {
+          int max_index = std::distance(output_row.begin(), std::max_element(output_row.begin(), output_row.end()));
+          ys.push_back(max_index);
+      }
+      return ys;
+  }
+  ```
+
+#### Función `print_data`
+
+Imprime por consola estadísticas del conjunto cargado, incluyendo nombre, número de muestras, número de entradas y salidas por muestra.
 
 ```cpp
-const std::vector<std::vector<float>> &Dataset::get_X() const
+void Dataset::print_data(std::string name) const
 {
-    return X;
+    std::cout << "==========================\n";
+    std::cout << "DATASET " << name << "\n";
+    std::cout << "\tTotal samples: " << X.size() << "\n";
+    std::cout << "\tInputs per sample: " << (X.empty() ? 0 : X[0].size()) << "\n";
+    std::cout << "\tOutputs per sample: " << (y.empty() ? 0 : y[0].size()) << "\n";
+    std::cout << "==========================\n\n";
 }
 ```
 
-- `get_t`: Retorna la lista y
+#### Función `generate_mnist`
+
+Esta función lee los archivos binarios originales del dataset **MNIST** y genera archivos `.txt` legibles para entrenamiento/prueba.
+
+##### `reverse_int`
+
+Convierte enteros en formato _big-endian_ (como los usa MNIST) a _little-endian_ (como los usa la mayoría de las plataformas modernas).
 
 ```cpp
-const std::vector<float> &Dataset::get_y() const
+int reverse_int(int i)
 {
-    return y;
+    unsigned char c1, c2, c3, c4;
+    c1 = i & 255;
+    c2 = (i >> 8) & 255;
+    c3 = (i >> 16) & 255;
+    c4 = (i >> 24) & 255;
+    return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+}
+```
+
+##### `read_mnist_images`
+
+Lee imágenes MNIST y normaliza los píxeles en `[0, 1]`.
+
+```cpp
+void read_mnist_images(const std::string &filename, std::vector<std::vector<double>> &images, int num_images)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Cannot open file " + filename);
+    int magic, n, rows, cols;
+    file.read((char *)&magic, 4);
+    magic = reverse_int(magic);
+    file.read((char *)&n, 4);
+    n = reverse_int(n);
+    file.read((char *)&rows, 4);
+    rows = reverse_int(rows);
+    file.read((char *)&cols, 4);
+    cols = reverse_int(cols);
+    images.resize(num_images, std::vector<double>(rows * cols));
+    for (int i = 0; i < num_images; ++i)
+        for (int j = 0; j < rows * cols; ++j)
+        {
+            unsigned char pixel;
+            file.read((char *)&pixel, 1);
+            images[i][j] = pixel / 255.0;
+        }
+}
+```
+
+##### `read_mnist_labels`
+
+Lee las etiquetas asociadas a las imágenes.
+
+```cpp
+void read_mnist_labels(const std::string &filename, std::vector<int> &labels, int num_labels)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Cannot open file " + filename);
+    int magic, n;
+    file.read((char *)&magic, 4);
+    magic = reverse_int(magic);
+    file.read((char *)&n, 4);
+    n = reverse_int(n);
+    labels.resize(num_labels);
+    for (int i = 0; i < num_labels; ++i)
+    {
+        unsigned char label;
+        file.read((char *)&label, 1);
+        labels[i] = label;
+    }
+}
+```
+
+#### Formato de los archivos generados:
+
+- Primera línea: número de entradas (784) y número de salidas (10).
+- Líneas siguientes: 784 valores normalizados de píxeles (0–1), seguidos por 10 valores en one-hot según la etiqueta.
+
+```cpp
+void Dataset::generate_mnist(const std::string &filename, int TRAIN_SAMPLES, int TEST_SAMPLES)
+{
+    std::vector<std::vector<double>> train_images, test_images;
+    std::vector<int> train_labels, test_labels;
+
+    // Leer imágenes y etiquetas de MNIST
+    read_mnist_images("./archive/train-images.idx3-ubyte", train_images, TRAIN_SAMPLES);
+    read_mnist_labels("./archive/train-labels.idx1-ubyte", train_labels, TRAIN_SAMPLES);
+    read_mnist_images("./archive/t10k-images.idx3-ubyte", test_images, TEST_SAMPLES);
+    read_mnist_labels("./archive/t10k-labels.idx1-ubyte", test_labels, TEST_SAMPLES);
+
+    std::ofstream train_file(filename + "train.txt");
+    std::ofstream test_file(filename + "test.txt");
+
+    if (!train_file || !test_file)
+        throw std::runtime_error("No se pudieron crear archivos de salida train/test");
+
+    int n_inputs = train_images[0].size();
+    int n_outputs = 10;
+
+    train_file << n_inputs << " " << n_outputs << "\n";
+    test_file << n_inputs << " " << n_outputs << "\n";
+
+    for (size_t i = 0; i < train_images.size(); ++i)
+    {
+        for (double v : train_images[i])
+            train_file << v << " ";
+        for (int j = 0; j < n_outputs; ++j)
+            train_file << (train_labels[i] == j ? 1 : 0) << " ";
+        train_file << "\n";
+    }
+
+    for (size_t i = 0; i < test_images.size(); ++i)
+    {
+        for (double v : test_images[i])
+            test_file << v << " ";
+        for (int j = 0; j < n_outputs; ++j)
+            test_file << (test_labels[i] == j ? 1 : 0) << " ";
+        test_file << "\n";
+    }
+
+    train_file.close();
+    test_file.close();
 }
 ```
 
 ---
 
-### Clase `Layer`
+### Clase Config
 
-Representa una **capa completa de neuronas** dentro de una red neuronal. Cada capa se compone de múltiples instancias de la clase `Neuron` y administra tanto la propagación hacia adelante (_forward_) como hacia atrás (_backward_), así como la actualización de los pesos en función de los errores y la tasa de aprendizaje. Se almacenarán las funciones para activación, las entradas, los resultados antes de la activación y la lista de neuronas.
+La clase `Config` permite cargar desde un archivo de texto la configuración de una red neuronal multicapa, incluyendo el número de capas, el tamaño de cada capa, las funciones de activación de cada capa y la tasa de aprendizaje (`learning_rate`). Esto permite construir arquitecturas de redes fácilmente ajustables sin recompilar el programa.
+
+- `n_inputs`: Número de entradas a la red (definido externamente al archivo de configuración).
+- `layer_sizes`: Tamaños de todas las capas (ocultas + salida).
+- `learning_rate`: Tasa de aprendizaje usada en el entrenamiento.
+- `activations`: Funciones de activación por capa, una por cada tamaño en `layer_sizes`.
 
 ```cpp
-
-class Layer
+class Config
 {
 private:
-    std::vector<Neuron> neurons;
-    std::function<float(float)> activation;
-    std::function<float(float)> activation_derivative;
-    std::vector<float> last_input;
-    std::vector<float> last_z;
+    int n_inputs;
+    std::vector<int> layer_sizes;
+    float learning_rate;
+    std::vector<ActivationType> activations;
 
 public:
-    Layer() = default;
-    Layer(int n_neurons, int n_inputs_per_neuron,
-          std::function<float(float)> act,
-          std::function<float(float)> act_deriv);
-    void load_layer(int n_neurons, int n_inputs_per_neuron,
-                    std::function<float(float)> act,
-                    std::function<float(float)> act_deriv,
-                    const std::vector<std::vector<float>> &all_weights,
-                    const std::vector<float> &all_biases);
-    std::vector<float> forward(const std::vector<float> &inputs);
-    std::vector<float> backward(const std::vector<float> &deltas_next,
-                                const std::vector<std::vector<float>> &weights_next);
-    void update_weights(float lr, const std::vector<float> &deltas);
-    const std::vector<float> &get_last_input() const;
-    const std::vector<float> &get_last_z() const;
-    const std::vector<Neuron> &get_neurons() const;
-    std::function<float(float)> get_activation_derivative() const { return activation_derivative; }
+    bool load_config(const std::string &filename, const int inputs);
+    const std::vector<int> &get_layer_sizes() const;
+    float get_learning_rate() const;
+    const std::vector<ActivationType> &get_activations() const;
+    const void print_config();
 };
 ```
 
-#### Constructor
+#### Método `load_config`
 
-Inicializa una capa con `n` neuronas, cada una con `n_inputs_per_neuron` entradas. Asocia la función de activación y su derivada para utilizar en los procesos de propagación directa e inversa.
+Carga los parámetros desde un archivo de texto siguiendo este formato:
 
-```cpp
-Layer::Layer(int n_neurons, int n_inputs_per_neuron,
-             std::function<float(float)> act,
-             std::function<float(float)> act_deriv)
-    : activation(act), activation_derivative(act_deriv)
-{
-    for (int i = 0; i < n_neurons; ++i)
-        neurons.emplace_back(n_inputs_per_neuron, activation);
-}
+```
+[capas]          // línea 1: tamaños de capa separados por espacio (ej: 32 16 10)
+[lr]             // línea 2: tasa de aprendizaje (ej: 0.01)
+[activaciones]   // línea 3: nombres de funciones por capa (ej: relu relu softmax)
 ```
 
-#### Método `load_layer`
-
-Este método permite **cargar pesos y sesgos específicos** a cada neurona de la capa, útil para inicializar una red previamente entrenada o reproducir experimentos.
-
 ```cpp
-void Layer::load_layer(int n_neurons, int n_inputs_per_neuron,
-                       std::function<float(float)> act,
-                       std::function<float(float)> act_deriv,
-                       const std::vector<std::vector<float>> &all_weights = {},
-                       const std::vector<float> &all_biases = {})
-{
-    activation = act;
-    activation_derivative = act_deriv;
-    neurons.clear();
-    neurons.reserve(n_neurons);
-    for (int i = 0; i < n_neurons; ++i)
-    {
-        neurons.emplace_back(n_inputs_per_neuron, act);
-        if (!all_weights.empty() && i < (int)all_weights.size())
-            neurons.back().set_weights(all_weights[i]);
-        if (!all_biases.empty() && i < (int)all_biases.size())
-            neurons.back().set_sesgo(all_biases[i]);
-    }
-    last_input.clear();
-    last_z.clear();
-}
-```
-
-#### Función `forward`
-
-Realiza la **propagación hacia adelante**, calculando la salida de cada neurona de la capa. Para cada neurona:
-
-1. Calcula `z = w · x + b` (producto punto más sesgo).
-2. Aplica la función de activación `f(z)` y guarda el resultado.
-
-También guarda el `input` y los valores `z` sin activar, que serán usados en el retropropagado (`backward()`).
-
-```cpp
-std::vector<float> Layer::forward(const std::vector<float> &inputs)
-{
-    last_input = inputs;
-    last_z.clear();
-    std::vector<float> outputs;
-    for (auto &n : neurons)
-    {
-        float z = 0.0f;
-        auto weights = n.get_weights();
-        for (size_t i = 0; i < weights.size(); ++i)
-            z += weights[i] * inputs[i];
-        z += n.get_sesgo();
-        last_z.push_back(z);
-        outputs.push_back(activation(z));
-    }
-    return outputs;
-}
-```
-
-#### Función `backward`
-
-Implementa la **retropropagación del error**, que calcula los gradientes locales de esta capa basándose en el error proveniente de la siguiente capa.
-
-Para cada neurona `i` en esta capa:
-
-- Se calcula la suma ponderada de los errores de la siguiente capa.
-- Se multiplica por la derivada de la función de activación evaluada en `z_i`.
-
-Devuelve un vector con los **errores (deltas)** para cada neurona, que serán utilizados para actualizar los pesos.
-
-```cpp
-std::vector<float> Layer::backward(const std::vector<float> &deltas_next,
-                                   const std::vector<std::vector<float>> &weights_next)
-{
-    std::vector<float> deltas(neurons.size(), 0.0f);
-    for (size_t i = 0; i < neurons.size(); ++i)
-    {
-        float sum = 0.0f;
-        for (size_t j = 0; j < deltas_next.size(); ++j)
-            sum += weights_next[j][i] * deltas_next[j];
-        deltas[i] = sum * activation_derivative(last_z[i]);
-    }
-    return deltas;
-}
-```
-
-#### Función `update_weights`
-
-Actualiza los pesos y sesgos de cada neurona usando la regla delta:
-
-![Función Pesos](.docs/f1.png)
-
-Donde:
-
-- `n` es la tasa de aprendizaje `lr`
-- `delta_i` es el error de la neurona
-- `x_j` es la entrada `j` correspondiente
-
-El sesgo también se ajusta en cada neurona según
-
-![Funcion Sesgo](.docs/f2.png)
-
-```cpp
-void Layer::update_weights(float lr, const std::vector<float> &deltas)
-{
-    for (size_t i = 0; i < neurons.size(); ++i)
-        neurons[i].update_weights(last_input, deltas[i], lr);
-}
+bool Config::load_config(const std::string &filename, const int inputs)
 ```
 
 #### Métodos GET
 
-```cpp
-const std::vector<float> &get_last_input() const;
-const std::vector<float> &get_last_z() const;
-const std::vector<Neuron> &get_neurons() const;
-```
+- `get_layer_sizes`: Devuelve los tamaños de las capas.
 
-- `get_last_input`: Devuelve el último vector de entrada a la capa.
-- `get_last_z`: Devuelve los valores antes de activación (`z`) de la capa.
-- `get_neurons`: Permite acceder directamente a las neuronas, útil para inspeccionar pesos o salidas individuales.
+  ```cpp
+  const std::vector<int> &get_layer_sizes() const;
+  ```
+
+- `get_learning_rate`: Devuelve la tasa de aprendizaje.
+
+  ```cpp
+  float get_learning_rate() const;
+  ```
+
+- `get_activations`: Devuelve las funciones de activación como `ActivationType`.
+
+  ```cpp
+  const std::vector<ActivationType> &get_activations() const;
+  ```
 
 ---
 
-### Clase `MLP`
+#### Método `print_config`
 
-La clase Perceptrón Multicapa representa una red neuronal con múltiples capas completamente conectadas. Su diseño permite especificar el número de capas, neuronas por capa, funciones de activación y derivadas correspondientes, lo que la hace flexible y extensible.
+Imprime en consola los parámetros cargados, útil para verificar la configuración antes de inicializar la red neuronal:
 
 ```cpp
-class MLP
+const void Config::print_config()
 {
-private:
-    std::vector<Layer> layers;
-    float learning_rate;
-    int input_size;
-    std::vector<std::function<float(float)>> activations;
-    std::vector<std::function<float(float)>> derivatives;
+    std::cout << "==========================\n";
+    std::cout << "CONFIGURATION\n";
+    std::cout << "Layer Sizes: \n";
+    std::cout << "\t" << n_inputs << " inputs\n";
+    for (const auto &size : layer_sizes)
+        std::cout << "\t" << size << " neurons\n";
+    std::cout << "Learning Rate: " << learning_rate << "\n";
+    std::cout << "Activations: \n";
+    for (const auto &act : activations)
+        std::cout << "\t" << to_string(act) << "\n";
+    std::cout << "==========================\n";
+}
+```
 
-public:
-    MLP() = default;
-    MLP(const std::vector<int> &sizes,
-        const std::vector<std::function<float(float)>> &activations,
-        const std::vector<std::function<float(float)>> &derivatives,
-        float lr = 0.1);
+---
 
-    std::vector<float> predict(const std::vector<float> &input);
-    void train(const std::vector<std::vector<float>> &X,
-               const std::vector<std::vector<float>> &Y,
-               float min_error = 0.001f,
-               bool print = false,
-               const std::string &dataset_filename = "databaese.txt");
-    float mse(const std::vector<float> &pred, const std::vector<float> &target);
-    void backpropagate(const std::vector<float> &output,
-                       const std::vector<float> &target,
-                       std::vector<std::vector<float>> &all_deltas);
-    float train_epoch(const std::vector<std::vector<float>> &X, const std::vector<std::vector<float>> &Y);
-    void log_epoch(std::ofstream &log_file, int epoch, float mse_avg);
-    void save_final_weights(const std::string &path);
-    void print_weights(int epoch, float mse_avg);
-    bool load_from_file(const std::string &filename);
+### Archivo `activation.hpp`
+
+Este archivo define las funciones de activación utilizadas en una red neuronal, sus derivadas, y herramientas auxiliares para trabajar con ellas. Permite usar diferentes funciones de activación para las capas (como `sigmoid`, `relu`, `tanh` o `softmax`) de forma modular, además de convertir entre `string` y `enum` para facilitar la configuración desde archivos externos.
+
+#### Enum `ActivationType
+
+```cpp
+enum ActivationType
+{
+    SIGMOID,
+    RELU,
+    TANH,
+    SOFTMAX
 };
 ```
 
-#### Constructor
+#### Funciones de Activación
 
-Inicializa la red neuronal con una lista de tamaños por capa (`sizes`), funciones de activación, derivadas y una tasa de aprendizaje (`learning_rate`). Verifica que haya al menos una capa de entrada y una de salida, y que el número de funciones de activación coincida con el de capas ocultas/salida.
+- Sigmoid
+
+Suaviza los valores a un rango entre 0 y 1. Ideal para problemas binarios.
+Su derivada se calcula como `x(1 - x)`, asumiendo que `x` ya es la salida de `sigmoid(x_original)`.
 
 ```cpp
-MLP::MLP(const std::vector<int> &sizes,
-         const std::vector<std::function<float(float)>> &activations,
-         const std::vector<std::function<float(float)>> &derivatives,
-         float lr)
-    : learning_rate(lr), activations(activations), derivatives(derivatives),
-      input_size(sizes[0])
+inline double sigmoid(double x)
 {
-    if (sizes.size() < 2 || activations.size() != sizes.size() - 1)
-        throw std::invalid_argument("Invalid layer or activation sizes");
-    for (size_t i = 1; i < sizes.size(); ++i)
-        layers.emplace_back(Layer(sizes[i], sizes[i - 1], activations[i - 1], derivatives[i - 1]));
+    return 1.0 / (1.0 + exp(-x));
+}
+
+inline double sigmoid_derivative(double x)
+{
+    return x * (1.0 - x);
 }
 ```
 
-#### Método `predict`
+- ReLU
 
-Realiza una inferencia hacia adelante (forward pass) sobre la red, aplicando cada capa secuencialmente a la entrada hasta obtener la salida.
-
-```cpp
-std::vector<float> MLP::predict(const std::vector<float> &input)
-{
-    std::vector<float> output = input;
-    for (auto &layer : layers)
-        output = layer.forward(output);
-    return output;
-}
-```
-
-#### Método `mse` (Error Cuadrático Medio)
-
-Calcula el error cuadrático medio entre la salida predicha y la salida esperada, para evaluar el desempeño de la red durante el entrenamiento.
+Rectified Linear Unit. Pasa los valores positivos y trunca los negativos a 0.
+Su derivada se define: Es 1 si `x > 0`, 0 en caso contrario. Eficiente y útil en capas ocultas.
 
 ```cpp
-float MLP::mse(const std::vector<float> &pred, const std::vector<float> &target)
-{
-    float sum = 0.0f;
-    for (size_t i = 0; i < pred.size(); ++i)
-        sum += (pred[i] - target[i]) * (pred[i] - target[i]);
-    return sum / pred.size();
-}
-```
-
-#### Método `backpropagate`
-
-Realiza la propagación hacia atrás (backpropagation) del error desde la capa de salida hacia las capas anteriores, utilizando la derivada de la función de activación de cada neurona. Calcula los **deltas** necesarios para la actualización de pesos.
-
-```cpp
-void MLP::backpropagate(const std::vector<float> &output,
-                        const std::vector<float> &target,
-                        std::vector<std::vector<float>> &all_deltas)
-{
-    std::vector<float> delta_output(output.size(), 0.0f);
-    const auto &z_out = layers.back().get_last_z();
-    auto act_deriv = layers.back().get_activation_derivative();
-    for (size_t j = 0; j < output.size(); ++j)
-        delta_output[j] = (target[j] - output[j]) * act_deriv(z_out[j]);
-
-    all_deltas.back() = delta_output;
-
-    for (int l = layers.size() - 2; l >= 0; --l)
-    {
-        std::vector<std::vector<float>> next_weights;
-        for (const auto &n : layers[l + 1].get_neurons())
-            next_weights.push_back(n.get_weights());
-
-        all_deltas[l] = layers[l].backward(all_deltas[l + 1], next_weights);
-    }
-}
-```
-
-#### Método `train_epoch`
-
-Ejecuta una época completa del entrenamiento: realiza forward, backpropagation y actualiza los pesos para cada muestra. Devuelve el error promedio de la época.
-
-```cpp
-float MLP::train_epoch(const std::vector<std::vector<float>> &X,
-                       const std::vector<std::vector<float>> &Y)
-{
-    float error_total = 0.0f;
-    for (size_t i = 0; i < X.size(); ++i)
-    {
-        std::vector<float> output = predict(X[i]);
-        std::vector<std::vector<float>> all_deltas(layers.size());
-        backpropagate(output, Y[i], all_deltas);
-        for (size_t l = 0; l < layers.size(); ++l)
-            layers[l].update_weights(learning_rate, all_deltas[l]);
-        error_total += mse(output, Y[i]);
-    }
-    return error_total / X.size();
-}
-```
-
-#### Método `train`
-
-Realiza el ciclo completo de entrenamiento por épocas. Guarda los resultados de cada época en un archivo de log y permite detener el entrenamiento automáticamente cuando el error cae por debajo de un umbral.
-
-```cpp
-void MLP::train(const std::vector<std::vector<float>> &X,
-                const std::vector<std::vector<float>> &Y,
-                float min_error, bool print,
-                const std::string &dataset_filename)
-{
-    std::string base_name = std::filesystem::path(dataset_filename).stem().string();
-    std::filesystem::path output_dir = std::filesystem::path("output") / base_name;
-    std::filesystem::create_directories(output_dir);
-    std::ofstream log_file(output_dir / "log.txt");
-
-    int e = 0;
-    while (true)
-    {
-        float mse_avg = train_epoch(X, Y);
-        log_epoch(log_file, e, mse_avg);
-        if (print)
-            print_weights(e, mse_avg);
-        if (mse_avg < min_error)
-        {
-            std::cout << "Training stopped at epoch " << e
-                      << " with MSE: " << mse_avg << "\n";
-            break;
-        }
-        e++;
-    }
-    log_file.close();
-    save_final_weights((output_dir / "final.txt").string());
-}
-```
-
-#### Métodos auxiliares
-
-##### `log_epoch`
-
-Registra la información de cada época en un archivo de log.
-
-```cpp
-void MLP::log_epoch(std::ofstream &log_file, int epoch, float mse_avg)
-{
-    log_file << "Epoch " << epoch << " - MSE: " << mse_avg << "\n";
-}
-```
-
-##### `save_final_weights`
-
-Guarda los pesos y sesgos finales de cada neurona en un archivo plano, junto con la estructura de la red y funciones de activación.
-
-```cpp
-void MLP::save_final_weights(const std::string &path)
-{
-    std::ofstream final_file(path);
-    //...
-}
-```
-
-##### `print_weights`
-
-Imprime en consola los pesos y sesgos de cada neurona por capa, útil para depuración.
-
-```cpp
-void MLP::print_weights(int epoch, float mse_avg)
-{
-    std::cout << "Epoch " << epoch << " - MSE: " << mse_avg << "\n";
-    // Itera e imprime pesos y sesgos
-}
-```
-
-##### `load_from_file`
-
-Carga una red previamente entrenada desde un archivo que contenga la arquitectura, tasa de aprendizaje, funciones de activación y pesos.
-
-```cpp
-bool MLP::load_from_file(const std::string &filename)
-{
-    std::ifstream file(filename);
-    // Extrae arquitectura, tasa de aprendizaje y pesos desde archivo plano
-}
-```
-
----
-
-### Activaciones y Derivadas
-
-Este archivo define un conjunto de **funciones de activación** comunes utilizadas en redes neuronales, junto con sus respectivas **derivadas**, que son esenciales para el cálculo del gradiente durante la propagación hacia atrás (_backpropagation_). Además, proporciona mecanismos para asociar nombres con las funciones usando `std::unordered_map`, lo cual es útil para guardar y cargar redes desde archivos.
-
-#### 1. Sigmoide
-
-La función sigmoide es una función suave que transforma cualquier número real en el rango (0, 1), lo cual la hace útil para problemas de clasificación binaria.
-
-```cpp
-inline float sigmoid(float x)
-{
-    return 1.0f / (1.0f + exp(-x));
-}
-```
-
-Su derivada se expresa en función del resultado de la sigmoide, lo cual mejora el rendimiento computacional:
-
-```cpp
-inline float sigmoid_derivative(float x)
-{
-    float s = sigmoid(x);
-    return s * (1.0f - s);
-}
-```
-
-#### 2. ReLU (Unidad Lineal Rectificada)
-
-La función ReLU es ampliamente usada por su simplicidad y eficiencia. Actúa como una compuerta que solo deja pasar valores positivos.
-
-```cpp
-inline float relu(float x)
+inline double relu(double x)
 {
     return x > 0 ? x : 0;
 }
 
-inline float relu_derivative(float x)
+inline double relu_derivative(double x)
 {
-    return x > 0 ? 1.0f : 0.0f;
+    return x > 0 ? 1 : 0;
 }
 ```
 
-#### 3. Tangente hiperbólica (`tanh`)
+- Tanh
 
-La función tangente hiperbólica es similar a la sigmoide pero con salida en el rango (-1, 1), lo que puede mejorar la convergencia en ciertas redes neuronales profundas.
+Función hiperbólica tangente. Salida entre -1 y 1.
+Derivada de `tanh`, usando la identidad `1 - \tanh^2(x)`.
 
 ```cpp
-inline float tanh_fn(float x)
+inline double tanh_fn(double x)
 {
     return std::tanh(x);
 }
 
-inline float tanh_derivative(float x)
+inline double tanh_derivative(double x)
 {
-    float t = std::tanh(x);
-    return 1.0f - t * t;
+    double t = std::tanh(x);
+    return 1.0 - t * t;
 }
+```
+
+- Softmax (Función de Activación para Vectores)
+
+Transforma un vector en una distribución de probabilidad (valores entre 0 y 1 que suman 1).
+Resta el valor máximo (`max_val`) para evitar problemas de overflow numérico.
+Solo se usa al final de una red neuronal de clasificación multiclase.
+
+```cpp
+inline void softmax(const std::vector<double> &input, std::vector<double> &output)
+{
+    double max_val = *max_element(input.begin(), input.end());
+    double sum = 0.0;
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        output[i] = exp(input[i] - max_val);
+        sum += output[i];
+    }
+    for (double &val : output)
+        val /= sum;
+}
+```
+
+#### Conversión `enum <→> string`
+
+Se usan `unordered_map` para traducir entre nombres de funciones (`string`) y su tipo (`ActivationType`):
+
+```cpp
+inline const std::unordered_map<ActivationType, std::string> activation_to_string = { ... };
+inline const std::unordered_map<std::string, ActivationType> string_to_activation = { ... };
+```
+
+- Estos mapas permiten cargar funciones desde un archivo de configuración fácilmente.
+
+#### Función `to_string`
+
+Convierte un `ActivationType` a su nombre (`"sigmoid"`, `"relu"`, etc.).
+
+```cpp
+inline std::string to_string(ActivationType type)
+```
+
+#### Función `from_string`
+
+Convierte una cadena a su `ActivationType` correspondiente (ej. `"tanh"` → `TANH`).
+
+```cpp
+inline ActivationType from_string(const std::string &name)
 ```
 
 ---
-
-#### Mapas de funciones
-
-Estos mapas permiten registrar funciones por su nombre, facilitando la serialización de redes y su reconstrucción desde archivos:
-
-```cpp
-inline std::unordered_map<std::string, std::function<float(float)>> activation_map = {
-    {"sigmoid", sigmoid},
-    {"relu", relu},
-    {"tanh", tanh_fn}
-};
-
-inline std::unordered_map<std::string, std::function<float(float)>> derivative_map = {
-    {"sigmoid", sigmoid_derivative},
-    {"relu", relu_derivative},
-    {"tanh", tanh_derivative}
-};
-```
-
-#### Recuperación de nombre de función
-
-Estas funciones permiten identificar el nombre asociado a una función de activación o derivada. Esto es útil para guardar la red en disco incluyendo el nombre de cada función.
-
-```cpp
-inline std::string get_activation_name(const std::function<float(float)> &func)
-{
-    auto ptr = func.target<float (*)(float)>();
-    if (ptr && *ptr == sigmoid) return "sigmoid";
-    else if (ptr && *ptr == relu) return "relu";
-    else if (ptr && *ptr == tanh_fn) return "tanh";
-    else return "unknown";
-}
-
-inline std::string get_derivative_name(const std::function<float(float)> &func)
-{
-    auto ptr = func.target<float (*)(float)>();
-    if (ptr && *ptr == sigmoid_derivative) return "sigmoid";
-    else if (ptr && *ptr == relu_derivative) return "relu";
-    else if (ptr && *ptr == tanh_derivative) return "tanh";
-    else return "unknown";
-}
-```
-
----
-
-### Ejecutable Train `main_train.cpp`
-
-Se encarga de ejecutar el entrenamiento con un archivo de database.
-
-#### 1. Carga del dataset
-
-Se recibe como parametro el archivo del dataset.txt y este lo carga con la clase `Dataset`, que luego se podra retornar solicitando la lista de entradas y salidas esperadas.
-
-```cpp
-std::string dataset_file = argv[1];
-Dataset dataset(dataset_file);
-std::vector<std::vector<float>> X = dataset.get_X();
-std::vector<float> y = dataset.get_y();
-```
-
-#### 2. Conversión de etiquetas
-
-Convierte las etiquetas escalares (`float`) en vectores de tamaño 1 para que coincidan con el formato esperado por el MLP (`std::vector<std::vector<float>>`).
-
-```cpp
-std::vector<std::vector<float>> Y;
-for (float v : y_scalar)
-    Y.push_back({v});
-```
-
-#### 3. Configuración del modelo
-
-Declaramos las variables de cantidad de entradas según el dataset, las funciones de activacion y sus derivadas, y los layers (capa de entrada, 1 capa oculta con 2 neuronas, capa de salida).
-
-```cpp
-int n_inputs = X[0].size();
-std::vector<std::function<float(float)>> activations = {sigmoid, relu};
-std::vector<std::function<float(float)>> derivatives = {sigmoid_derivative, relu_derivative};
-std::vector<int> layers = {n_inputs, 2, 1};
-```
-
-#### 4. Instanciación y entrenamiento del MLP
-
-Se crea una red `MLP` con tasa de aprendizaje 0.01, y se entrena hasta que el error sea menor que `0.0001`.
-
-```cpp
-MLP mlp(layers, activations, derivatives, 0.01f);
-std::cout << "Entrenando MLP..." << std::endl;
-mlp.train(X, Y, 0.0001f, false, dataset_file);
-```
-
-#### 5. Evaluación del modelo
-
-Para cada entrada `X[i]`, se calcula una predicción `pred[0]`. Se muestra:
-
-- Los valores de entrada.
-- El valor predicho y su clase binaria (0 o 1, usando un umbral de 0.5).
-- El valor esperado original.
-
-```cpp
-std::cout << "Predicciones:\n";
-for (size_t i = 0; i < X.size(); ++i)
-{
-    std::vector<float> pred = mlp.predict(X[i]);
-    std::cout << "(";
-    for (float val : X[i])
-        std::cout << val << " ";
-    std::cout << ") => " << pred[0] << " ≈ " << (pred[0] > 0.5f ? 1 : 0) << " (esperado: " << Y[i][0] << ")\n";
-}
-```
-
----
-
-### Ejecutable Test `main_test.cpp`
-
-Se encarga de ejecutar el perceptron pero permite cargar los pesos y realizar una consulta para obtener una salida.
-
-#### 1. Lectura de entradas y archivo
-
-Recibe dos parametros que serán numero flotantes y estos serán los inputs de la consulta y el tercer parametro será el archivo del cuál se cargaran los pesos ya entrenados.
-
-```cpp
-float x1 = std::stof(argv[1]);
-float x2 = std::stof(argv[2]);
-std::string filename = argv[3];
-```
-
-#### 2. Carga del modelo
-
-Se crea un objeto `MLP` sin entrenar, y se carga toda la configuración pesos previamente netrenados desde `filename`, si falla la carga, se informa el error.
-
-```cpp
-MLP mlp;
-if (!mlp.load_from_file(filename))
-{
-    std::cerr << "Error: Could not load MLP from file: " << filename << std::endl;
-    return 1;
-}
-```
-
-#### 3. Impresión de confirmación
-
-Se indica que la red fue cargada correctamente y para comprobarlo se imprimen los pesos actuales.
-
-```cpp
-std::cout << "MLP loaded successfully from " << filename << std::endl;
-mlp.print_weights(0, 0.0f);
-```
-
-#### 4. Predicción
-
-Se forma un vector de entrada con `x1` y `x2`, y se realiza la predicción usando el método `predict` del MLP.
-
-```cpp
-std::vector<std::vector<float>> X = {{x1, x2}};
-std::vector<float> pred = mlp.predict(X[0]);
-```
-
-#### 5. Salida de resultados
-
-Se muestra la predicción calculada y se binariza para la respuesta.
-
-```cpp
-std::cout << "Predictions:\n";
-std::cout << "(";
-for (float val : X[0])
-    std::cout << val << " ";
-std::cout << ") => " << pred[0] << " ≈ " << (pred[0] > 0.5f ? 1 : 0) << "\n";
-```
 
 ### Ejecución
 
@@ -859,15 +1104,64 @@ make run
 
 #### Ejecución de Entrenamiento
 
+##### **Modo A: Entrenar desde archivos `train.txt` y `test.txt`**
+
 ```bash
-./build/mlp_train ./database/[name].txt
+./build/mlp_train --dataset [path_dataset] --save_data [path_model.dat] --epochs [num_epochs] --config [path_config.txt]
 ```
+
+- Ejemplo real:
+
+```bash
+./build/mlp_train --dataset ./database/MNIST/ --save_data ./output/MNIST/mnist_mlp.dat --epochs 5 --config ./config/mnist.txt
+```
+
+---
+
+##### **Modo B: Generar datos desde MNIST binario y entrenar**
+
+```bash
+./build/mlp_train --mnist [train_samples] [test_samples] --epochs [num_epochs] --config [path_config.txt]
+```
+
+- Ejemplo real:
+
+```bash
+./build/mlp_train --mnist 20000 5000 --epochs 1 --config ./config/mnist.txt
+```
+
+##### Tabla de parámetros de `mlp_train`
+
+| Parámetro              | Obligatorio                  | Descripción                                                                                                           |
+| ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--dataset [path]`     | ❌ (si usas `--mnist`)       | Ruta a la carpeta con `train.txt` y `test.txt`. Se usa también como destino si generas los datos desde MNIST binario. |
+| `--save_data [file]`   | ✅                           | Ruta donde se guarda el modelo `.dat` entrenado o desde donde se carga uno existente.                                 |
+| `--epochs [num]`       | ✅                           | Número de épocas para entrenar la red.                                                                                |
+| `--config [file]`      | ✅                           | Archivo `.txt` con la configuración de la red neuronal.                                                               |
+| `--mnist [train test]` | ❌ (si ya tienes los `.txt`) | Genera `train.txt` y `test.txt` desde los archivos binarios originales de MNIST.                                      |
+
+---
 
 #### Ejecución de Test o Consulta
 
+##### Formato general del comando
+
 ```bash
-./build/mlp_test 1 1 ./output/[name]/final.txt
+./test_model --save_data [path_model.dat] --test [path_test.txt]
 ```
+
+- Ejemplo real:
+
+```bash
+./test_model --save_data output/MNIST/mnist_mlp.dat --test dataset/mnist_style.txt
+```
+
+##### Tabla de parámetros
+
+| Parámetro            | Obligatorio | Descripción                                                           |
+| -------------------- | ----------- | --------------------------------------------------------------------- |
+| `--save_data [file]` | ✅          | Ruta al archivo del modelo previamente entrenado (`.dat`).            |
+| `--test [file]`      | ✅          | Ruta al archivo de prueba (`.txt`) con entradas y etiquetas en texto. |
 
 ### Salida
 
@@ -883,51 +1177,69 @@ make run
 
 ## Implementación en Python
 
-Este script en Python sirve para **visualizar cómo disminuye el error cuadrático medio (MSE)** durante el entrenamiento de una red neuronal para distintos conjuntos de datos: `XOR`, `AND` y `OR`. Es útil para analizar el **progreso del aprendizaje del modelo a lo largo de las épocas**.
+### test.py
 
-### 1. Función `cargar_mse_por_epoch(path)`
-
-Lee un archivo de log línea por línea, extrayendo las épocas (`Epoch X`) y el MSE reportado en esa línea.
-
-Ejemplo de línea válida:
-
-```
-Epoch 35 - MSE: 0.004563
-```
+Convierte un conjunto de imágenes PNG de dígitos (por ejemplo, del 0 al 9) y sus etiquetas correspondientes en un archivo de texto plano compatible con una red neuronal MLP. Lee las etiquetas desde un archivo (labels.txt) y las imágenes desde una carpeta, asegurándose de que la cantidad de imágenes coincida con la de etiquetas. Cada imagen se convierte a escala de grises, se redimensiona a 28×28 píxeles, se normaliza a valores entre 0 y 1 y se convierte en un vector de 784 características. Luego, cada etiqueta se transforma en codificación one-hot de 10 posiciones. El archivo de salida comienza con una línea "784 10" y contiene una línea por ejemplo con los valores de entrada seguidos por los de salida codificada. El resultado es un archivo de entrenamiento o prueba listo para usar con el programa MLP.
 
 ```python
-def cargar_mse_por_epoch(path):
-    epochs = []
-    mses = []
-    with open(path, 'r') as f:
-        for line in f:
-            match = re.match(r"Epoch\s+(\d+)\s+-\s+MSE:\s+([0-9.eE+-]+)", line)
-            if match:
-                epochs.append(int(match.group(1)))
-                mses.append(float(match.group(2)))
-    return epochs, mses
+import os
+from PIL import Image
+import numpy as np
+
+def convert_dataset(image_folder, labels_file, output_file):
+    with open(labels_file, 'r') as f:
+        labels = [int(line.strip()) for line in f if line.strip()]
+
+    image_files = sorted([
+        f for f in os.listdir(image_folder)
+        if f.lower().endswith('.png')
+    ])
+
+    if len(image_files) != len(labels):
+        print(f"Error: {len(image_files)} imágenes y {len(labels)} etiquetas.")
+        return
+
+    with open(output_file, 'w') as out:
+        out.write("784 10\n")
+        for i, filename in enumerate(image_files):
+            path = os.path.join(image_folder, filename)
+            img = Image.open(path).convert('L').resize((28, 28))
+            data = np.array(img).astype(np.float32).flatten() / 255.0
+            label = labels[i]
+            one_hot = [0] * 10
+            one_hot[label] = 1
+            values = ' '.join(f"{x:.5f}" for x in data)
+            label_str = ' '.join(str(v) for v in one_hot)
+            out.write(f"{values} {label_str}\n")
+
+    print(f"Dataset guardado en '{output_file}' con {len(image_files)} ejemplos.")
+
+if __name__ == "__main__":
+    image_folder = "./test/mnist45/"
+    labels_file = "./test/mnist45/labels.txt"
+    output_file = "./test/mnist45.txt"
+
+    convert_dataset(image_folder, labels_file, output_file)
+
 ```
 
-#### 3. Graficado con Matplotlib
+### graphic.py
 
-Carga los datos y los grafica usando la escala logarítmica en el eje Y para resaltar mejoras pequeñas.
+Grafica los logs dedistinos maneras de entrenar el mnist para obtener distintos resultados, también comparandolos con un test externo.
 
 ```python
-fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-...
+graphic.py
 ```
-
-### Utilidad
-
-- Diagnóstico visual: ayuda a detectar si el modelo está aprendiendo bien o si hay problemas (como sobreajuste o estancamiento).
-- Comparación de rendimientos entre diferentes configuraciones o funciones de activación.
-- Confirmar que el modelo converge (baja del MSE constante).
-
----
 
 ### Ejecución
 
-Después de ejecutar el entrenamiento de AND, OR y XOR con C++, podremos ejecutar esto.
+Para ejecutar el mlp_test, ejecutar esto antes.
+
+```bash
+python test.py
+```
+
+Y para comparar resultados ejecutar:
 
 ```bash
 python graphic.py
@@ -935,33 +1247,11 @@ python graphic.py
 
 ### Salida
 
-Este es el Gráfico de comparación entre XOR, AND y OR con las mismas funciones de activación.
-
 ![Grafico](.docs/graphics.png)
-
-Y este el gráfico de comparación entre 5 combinaciones de las 9 posibles para XOR.
-
-![Grafico](.docs/XOR.png)
-
-./build/mlp_train --mnist 60000 10000 --epochs 10 --config ./config/mnist.txt --save_data ./output/MNIST/mnist_mlp.dat
-
-```bash
-./build/mlp_train --mnist 20000 5000 --epochs 1 --config ./config/mnist.txt
-```
-
-```bash
-./build/mlp_train --dataset ./database/MNIST/ --save_data ./output/MNIST/mnist_mlp.dat --epochs 1 --config ./config/mnist.txt
-```
-
-```bash
-./test_model --save_data output/MNIST/mnist_mlp.dat --test dataset/mnist_style.txt
-```
 
 ## Conclusiones
 
-Los resultados del entrenamiento mostraron que, para problemas simples como AND y OR, el perceptrón fue más eficiente, logrando converger en solo 4 épocas con resultados correctos. En cambio, aunque el MLP alcanzó una alta precisión (MSE ≈ 1e-4), requirió muchas más épocas, especialmente para OR (casi 450,000), lo que reflejó una menor eficiencia en estos casos. Sin embargo, el MLP, con su arquitectura más compleja y funciones de activación como Sigmoide–ReLU, ofreció mayor flexibilidad y fue más adecuado para problemas no lineales.
-
-Otra observación fue que, al entrenar la red MLP con cinco combinaciones de funciones de activación para resolver XOR, se encontró que las configuraciones ReLU en la capa oculta con Sigmoide en la salida, Sigmoide en ambas capas, y Sigmoide en la oculta con ReLU en la salida fueron las más efectivas, logrando un MSE menor a 1e-4. Destacó la combinación Sigmoide–ReLU por su rápida convergencia en solo 17,171 épocas. La combinación Sigmoide–Tanh también funcionó, pero requirió más del doble de épocas, mientras que Tanh–Sigmoide no logró un error satisfactorio incluso tras 4 millones de épocas.
+Los resultados del entrenamiento mostraron que, para problemas
 
 ## Author
 
