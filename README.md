@@ -1,4 +1,4 @@
-# MLP (Multi-Layer Perceptron)
+# MLP (Multi-Layer Perceptron) - MNIST
 
 By Braulio Nayap Maldonado Casilla
 
@@ -1169,7 +1169,9 @@ make run
 
 #### Ejecución de Entrenamiento
 
-![Ejecución TRAIN](.docs/train.png)
+![Ejecución TRAIN](.docs/train_mnits.png)
+
+![Ejecución TRAIN](.docs/train_dataset.png)
 
 #### Ejecución de Test
 
@@ -1228,7 +1230,97 @@ if __name__ == "__main__":
 Grafica los logs dedistinos maneras de entrenar el mnist para obtener distintos resultados, también comparandolos con un test externo.
 
 ```python
-graphic.py
+import matplotlib.pyplot as plt
+import re
+import os
+
+def cargar_train_test_logs(path):
+    epochs = []
+    train_losses = []
+    train_accs = []
+    test_accs = []
+
+    with open(path, 'r') as f:
+        for line in f:
+            match = re.match(
+                r"Epoch\s+(\d+),\s+Train Loss:\s+([0-9.eE+-]+),\s+Train Acc:\s+([0-9.]+)%,\s+Train Time:.*?,\s+Test Acc:\s+([0-9.]+)%",
+                line
+            )
+            if match:
+                epochs.append(int(match.group(1)))
+                train_losses.append(float(match.group(2)))
+                train_accs.append(float(match.group(3)) / 100)
+                test_accs.append(float(match.group(4)) / 100)
+    return epochs, train_losses, train_accs, test_accs
+
+logs = {
+    "MNIST_50": "./output/MNIST_50/log.txt",
+    "MNIST_MINI_25": "./output/MNIST_MINI_25/log.txt"
+}
+
+for name, path in logs.items():
+    if not os.path.exists(path):
+        print(f"Archivo no encontrado: {path}")
+        continue
+
+    epochs, train_losses, train_accs, test_accs = cargar_train_test_logs(path)
+
+    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f"Entrenamiento y Evaluación - {name}")
+
+    # Gráfico 1: Entrenamiento
+    axs[0].plot(epochs, train_losses, label="Loss", color="red", linewidth=2)
+    axs[0].set_xlabel("Epochs")
+    axs[0].set_ylabel("Loss", color="red")
+    axs[0].tick_params(axis='y', labelcolor="red")
+    axs[0].set_title("Training Loss/Acc")
+    axs[0].grid(True)
+
+    ax2 = axs[0].twinx()
+    ax2.plot(epochs, train_accs, label="Accuracy", color="blue", linestyle="--", linewidth=2)
+    ax2.set_ylabel("Accuracy", color="blue")
+    ax2.tick_params(axis='y', labelcolor="blue")
+    ax2.set_ylim(0, 1.05)
+
+    # Gráfico 2: Test Accuracy
+    axs[1].plot(epochs, test_accs, label="Test Accuracy", color="green", linewidth=2)
+    axs[1].set_xlabel("Epochs")
+    axs[1].set_ylabel("Test Accuracy")
+    axs[1].set_title("Test Accuracy")
+    axs[1].set_ylim(0, 1.05)
+    axs[1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
+etiquetas = [
+    "MNIST - 50 epochs",
+    "MNIST - 40 epochs",
+    "MNIST - 30 epochs",
+    "MNIST - 20 epochs",
+    "MNIST - 10 epochs",
+    "MNIST - 5 epochs",
+    "MNIST_MINI - 25 epochs",
+    "MNIST_MINI - 20 epochs",
+    "MNIST_MINI - 10 epochs",
+    "MNIST_MINI - 5 epochs",
+    "MNIST_3_Layers - 10 epochs"
+]
+
+test_acc_values = [0.325, 0.325, 0.325, 0.325, 0.325, 0.325, 0.35, 0.35, 0.35, 0.35, 0.275]
+
+x_pos = list(range(len(etiquetas)))
+
+plt.figure(figsize=(12, 6))
+plt.plot(x_pos, test_acc_values, marker='o', linestyle='-', color='purple')
+plt.xticks(x_pos, etiquetas, rotation=45, ha='right', fontsize=9)
+plt.ylim(0, 1.0)
+plt.ylabel("External Test Accuracy")
+plt.title("Comparación de Test Accuracy según configuración de entrenamiento")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 ```
 
 ### Ejecución
@@ -1247,11 +1339,19 @@ python graphic.py
 
 ### Salida
 
-![Grafico](.docs/graphics.png)
+![Grafico](.docs/mnist_50.png)
+
+![Grafico](.docs/mnist_mini.png)
+
+![Grafico](.docs/test_acc.png)
 
 ## Conclusiones
 
-Los resultados del entrenamiento mostraron que, para problemas
+Los resultados obtenidos muestran que el modelo alcanza muy rápidamente una precisión del 100% en el conjunto de entrenamiento, pero esto no se traduce necesariamente en un mejor rendimiento en datos externos. Con solo 25 épocas, el modelo ya alcanza su mejor precisión en test interno (98.28%), siendo incluso superior a la obtenida con 50 épocas (98.24%), lo que sugiere que continuar entrenando más allá de ese punto no mejora el modelo y puede provocar sobreajuste.
+
+Al evaluar ambos modelos (25 y 50 épocas) en un conjunto externo, la precisión fue de apenas 32.5% en ambos casos, muy por debajo de lo observado internamente. Esto evidencia un claro caso de sobreentrenamiento, donde el modelo memoriza los datos originales pero pierde capacidad de generalización. Las gráficas lo confirman: la pérdida sigue disminuyendo, pero la precisión en test se estanca o empeora levemente, lo que indica que el modelo está aprendiendo patrones específicos del conjunto de entrenamiento en lugar de generalizar.
+
+Por tanto, el momento óptimo para detener el entrenamiento se encuentra entre las 20 y 25 épocas, cuando la precisión en test deja de mejorar y la pérdida ya es baja. Entrenar más allá de ese punto solo aumenta el riesgo de overfitting sin aportar mejoras reales. Esto se acentúa especialmente cuando se entrena con conjuntos pequeños o poco representativos como MNIST MINI (entrenado con 20,000 imagenes y testeado con 5,000), donde el modelo se ajusta perfectamente a los datos disponibles pero se iguala a la precision con ejemplos nuevos. AUnque en el caso de aumentar layers si se vio una falla rotunda ya que con 10 epochs llego a 27,5% con los ejemplos nuevos, fallando rotundamente.
 
 ## Author
 

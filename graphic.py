@@ -21,14 +21,11 @@ def cargar_train_test_logs(path):
                 test_accs.append(float(match.group(4)) / 100)
     return epochs, train_losses, train_accs, test_accs
 
-# Diccionario de logs
 logs = {
     "MNIST_50": "./output/MNIST_50/log.txt",
-    "MNIST_5": "./output/MNIST_5/log.txt",
-    "MNIST_MINI": "./output/MNIST_MINI/log.txt"
+    "MNIST_MINI_25": "./output/MNIST_MINI_25/log.txt"
 }
 
-# Graficar individualmente cada experimento
 for name, path in logs.items():
     if not os.path.exists(path):
         print(f"Archivo no encontrado: {path}")
@@ -64,27 +61,31 @@ for name, path in logs.items():
     plt.tight_layout()
     plt.show()
 
-# Comparación de sobreajuste y rendimiento externo
+
 etiquetas = [
-    "MNIST_50 - 50 epochs",
-    "MNIST_50 - 40 epochs",
-    "MNIST_50 - 30 epochs",
-    "MNIST_50 - 20 epochs",
-    "MNIST_50 - 10 epochs",
-    "MNIST_5 - 5 epochs",
-    "MNIST_MINI - 10 epochs"
+    "MNIST - 50 epochs",
+    "MNIST - 40 epochs",
+    "MNIST - 30 epochs",
+    "MNIST - 20 epochs",
+    "MNIST - 10 epochs",
+    "MNIST - 5 epochs",
+    "MNIST_MINI - 25 epochs",
+    "MNIST_MINI - 20 epochs",
+    "MNIST_MINI - 10 epochs",
+    "MNIST_MINI - 5 epochs",
+    "MNIST_3_Layers - 10 epochs"
 ]
-epoch_values = [50, 40, 30, 20, 10, 5, 10]
-test_acc_values = [0.32, 0.32, 0.32, 0.32, 0.32, 0.40, 0.42]
 
-plt.figure(figsize=(10, 6))
-plt.plot(epoch_values, test_acc_values, marker='o', linestyle='-', color='purple')
-for i, label in enumerate(etiquetas):
-    plt.text(epoch_values[i], test_acc_values[i] + 0.01, label, fontsize=8, ha='center')
-plt.xlabel("Epochs")
-plt.ylabel("External Test Accuracy")
-plt.title("Comparación de Test Accuracy según tamaño y duración de entrenamiento")
-plt.grid(True)
+test_acc_values = [0.325, 0.325, 0.325, 0.325, 0.325, 0.325, 0.35, 0.35, 0.35, 0.35, 0.275]
+
+x_pos = list(range(len(etiquetas)))
+
+plt.figure(figsize=(12, 6))
+plt.plot(x_pos, test_acc_values, marker='o', linestyle='-', color='purple')
+plt.xticks(x_pos, etiquetas, rotation=45, ha='right', fontsize=9)
 plt.ylim(0, 1.0)
+plt.ylabel("External Test Accuracy")
+plt.title("Comparación de Test Accuracy según configuración de entrenamiento")
+plt.grid(True)
+plt.tight_layout()
 plt.show()
-

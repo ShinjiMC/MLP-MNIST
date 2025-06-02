@@ -24,12 +24,3 @@ add_executable(mlp_test
      src/dataset.cpp
      src/config.cpp
 )
-
-add_executable(mnist
-     main.cpp
-     src/layer.cpp
-     src/mlp.cpp
-     src/neuron.cpp
-     src/dataset.cpp
-     src/config.cpp
-)
