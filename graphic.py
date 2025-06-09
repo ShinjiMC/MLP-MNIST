@@ -22,9 +22,15 @@ def cargar_train_test_logs(path):
     return epochs, train_losses, train_accs, test_accs
 
 logs = {
-    "MNIST_50": "./output/MNIST_50/log.txt",
-    "MNIST_MINI_25": "./output/MNIST_MINI_25/log.txt"
+    "ADAM": "./output/MNIST_ADAM_001/log.txt",
+    "RMS": "./output/MNIST_RMS_001/log.txt",
+    "SGD": "./output/MNIST_SGD_001/log.txt"
 }
+
+global_epochs = None
+global_test_accs = {}
+global_train_accs = {}
+global_train_losses = {}
 
 for name, path in logs.items():
     if not os.path.exists(path):
@@ -32,6 +38,10 @@ for name, path in logs.items():
         continue
 
     epochs, train_losses, train_accs, test_accs = cargar_train_test_logs(path)
+    global_epochs = epochs
+    global_test_accs[name] = test_accs
+    global_train_accs[name] = train_accs
+    global_train_losses[name] = train_losses
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
     fig.suptitle(f"Entrenamiento y Evaluación - {name}")
@@ -61,31 +71,98 @@ for name, path in logs.items():
     plt.tight_layout()
     plt.show()
 
+# Gráfico TRAIN global
+fig, ax1 = plt.subplots(figsize=(14, 8))
+ax2 = ax1.twinx()
+
+colors = {"SGD": "blue", "RMS": "red", "ADAM": "green"}
+
+for name in global_train_losses:
+    ax1.plot(global_epochs, global_train_losses[name], label=f"{name} Loss", linewidth=2, linestyle="-", color=colors[name])
+
+for name in global_train_accs:
+    ax2.plot(global_epochs, global_train_accs[name], label=f"{name} Accuracy", linewidth=2, linestyle="--", color=colors[name])
+
+ax1.set_xlabel("Epochs")
+ax1.set_ylabel("Loss")
+ax2.set_ylabel("Training Accuracy")
+ax1.grid(True)
+ax2.set_ylim(0, 1.05)
+
+# Combinar ambas leyendas automáticamente y mostrarlas en el gráfico
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+plt.legend(lines1 + lines2, labels1 + labels2, loc="best", fontsize="large")
+
+plt.title("Comparación Global de Training Loss y Accuracy")
+plt.tight_layout()
+plt.show()
+
+
+
+# Gráfico TEST global
+plt.figure(figsize=(14, 8))
+for name, accs in global_test_accs.items():
+    plt.plot(global_epochs, accs, label=f"{name}", linewidth=2)
+
+plt.title("Comparación Global de Test Accuracy")
+plt.xlabel("Epochs")
+plt.ylabel("Test Accuracy")
+plt.ylim(0.95, 1.001)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
 
 etiquetas = [
-    "MNIST - 50 epochs",
-    "MNIST - 40 epochs",
-    "MNIST - 30 epochs",
-    "MNIST - 20 epochs",
-    "MNIST - 10 epochs",
-    "MNIST - 5 epochs",
-    "MNIST_MINI - 25 epochs",
-    "MNIST_MINI - 20 epochs",
-    "MNIST_MINI - 10 epochs",
-    "MNIST_MINI - 5 epochs",
-    "MNIST_3_Layers - 10 epochs"
+    "ADAM - 50 epochs",
+    "ADAM - 40 epochs",
+    "ADAM - 30 epochs",
+    "ADAM - 20 epochs",
+    "ADAM - 10 epochs",
+    "RMS - 50 epochs",
+    "RMS - 40 epochs",
+    "RMS - 30 epochs",
+    "RMS - 20 epochs",
+    "RMS - 10 epochs",
+    "SGD - 50 epochs",
+    "SGD - 40 epochs",
+    "SGD - 30 epochs",
+    "SGD - 20 epochs",
+    "SGD - 10 epochs",
 ]
 
-test_acc_values = [0.325, 0.325, 0.325, 0.325, 0.325, 0.325, 0.35, 0.35, 0.35, 0.35, 0.275]
+test_acc_values = [0.35, 0.35, 0.35, 0.275, 0.35, 
+                   0.225, 0.275, 0.25, 0.325, 0.275,
+                   0.35, 0.30, 0.35, 0.375, 0.425]
+def extraer_epochs(label):
+    return int(label.split('-')[1].strip().split()[0])
+data = {
+    "ADAM": [],
+    "RMS": [],
+    "SGD": []
+}
+epochs_ordenados = sorted({extraer_epochs(e) for e in etiquetas if e.startswith("ADAM")}, reverse=True)
 
-x_pos = list(range(len(etiquetas)))
+for optim in data.keys():
+    filtered = [(extraer_epochs(e), val) for e, val in zip(etiquetas, test_acc_values) if e.startswith(optim)]
+    filtered.sort(key=lambda x: x[0], reverse=True)
+    data[optim] = [val for _, val in filtered]
 
 plt.figure(figsize=(12, 6))
-plt.plot(x_pos, test_acc_values, marker='o', linestyle='-', color='purple')
-plt.xticks(x_pos, etiquetas, rotation=45, ha='right', fontsize=9)
+
+colores = {"ADAM": "green", "RMS": "red", "SGD": "blue"}
+
+for optim, valores in data.items():
+    plt.plot(epochs_ordenados, valores, marker='o', linestyle='-', color=colores[optim], label=optim)
+
+plt.xticks(epochs_ordenados, [f"{e} epochs" for e in epochs_ordenados], fontsize=10)
 plt.ylim(0, 1.0)
 plt.ylabel("External Test Accuracy")
+plt.xlabel("Epochs")
 plt.title("Comparación de Test Accuracy según configuración de entrenamiento")
 plt.grid(True)
+plt.legend(title="Optimizador")
 plt.tight_layout()
 plt.show()

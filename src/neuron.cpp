@@ -15,3 +15,12 @@ void Neuron::load(std::istream &in, int n_inputs)
         in >> weights[i];
     in >> bias;
 }
+
+void Neuron::update(std::shared_ptr<Optimizer> opt, double learning_rate,
+                    const double *input, double delta,
+                    int input_size, int neuron_index, int layer_index)
+{
+    int global_id = layer_index * 100000 + neuron_index;
+    opt->update(learning_rate, weights, bias,
+                input, delta, input_size, global_id);
+}

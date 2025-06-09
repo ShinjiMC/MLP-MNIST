@@ -3,6 +3,8 @@
 #include <functional>
 #include <fstream>
 #include <stdexcept>
+#include "optimizer.hpp"
+#include <memory>
 
 class Neuron
 {
@@ -28,4 +30,7 @@ public:
     const double &get_biass() const { return bias; }
     void save(std::ostream &out) const;
     void load(std::istream &in, int n_inputs);
+    void update(std::shared_ptr<Optimizer> optimizer, double learning_rate,
+                const double *input, double delta,
+                int input_size, int neuron_index, int layer_index);
 };

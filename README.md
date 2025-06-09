@@ -34,6 +34,9 @@ public:
 
     void save(std::ostream &out) const;
     void load(std::istream &in, int n_inputs);
+    void update(std::shared_ptr<Optimizer> optimizer, double learning_rate,
+                const double *input, double delta,
+                int input_size, int neuron_index, int layer_index);
 };
 ```
 
@@ -104,6 +107,21 @@ void Neuron::load(std::istream &in, int n_inputs)
 }
 ```
 
+#### Actualización de la neurona
+
+Este método actualiza pesos y sesgo usando un optimizador (`opt`). Recibe la tasa de aprendizaje (`learning_rate`), el vector de entrada (`input`), el error local (`delta`), tamaño de entrada (`input_size`), índice de la neurona (`neuron_index`) y de la capa (`layer_index`). Calcula un ID global para identificar la neurona y llama a `opt->update` para modificar los parámetros.
+
+```cpp
+void Neuron::update(std::shared_ptr<Optimizer> opt, double learning_rate,
+                    const double *input, double delta,
+                    int input_size, int neuron_index, int layer_index)
+{
+    int global_id = layer_index * 100000 + neuron_index;
+    opt->update(learning_rate, weights, bias,
+                input, delta, input_size, global_id);
+}
+```
+
 ---
 
 ### Clase Layer
@@ -123,7 +141,10 @@ public:
     Layer(int in_size, int out_size, ActivationType act);
     Layer(int in_size, int out_size, ActivationType act, bool true_random);
     void linear_forward(const std::vector<double> &input, std::vector<double> &output);
-
+    void apply_update(std::shared_ptr<Optimizer> optimizer,
+                      const std::vector<double> &delta,
+                      const std::vector<double> &input,
+                      double learning_rate, int layer_index);
     // Getters
     int get_input_size();
     int get_output_size();
@@ -205,6 +226,20 @@ void Layer::linear_forward(const std::vector<double> &input, std::vector<double>
 }
 ```
 
+#### Aplicar actualización en la capa
+
+Este método aplica la actualización a todos los `neurons` de la capa usando un optimizador (`optimizer`). Recibe el vector de errores locales (`delta`), entradas (`input`), tasa de aprendizaje (`learning_rate`) y el índice de la capa (`layer_index`). Itera sobre las neuronas y llama a `update` en cada una, pasando los datos correspondientes.
+
+```cpp
+void Layer::apply_update(std::shared_ptr<Optimizer> optimizer, const std::vector<double> &delta,
+                         const std::vector<double> &input,
+                         double learning_rate, int layer_index)
+{
+    for (int i = 0; i < this->output_size; ++i)
+        neurons[i].update(optimizer, learning_rate, input.data(), delta[i], this->input_size, i, layer_index);
+}
+```
+
 #### Métodos de Guardado y Carga
 
 Permiten serializar y deserializar la información de las neuronas de la capa. Se guarda cada neurona con su índice de capa y de posición:
@@ -263,6 +298,7 @@ private:
     int n_outputs;
     double learning_rate;
     std::vector<Layer> layers;
+    std::shared_ptr<Optimizer> optimizer;
 
 public:
     Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
@@ -288,23 +324,34 @@ public:
 
 #### Constructor
 
-Este constructor crea e inicializa una red neuronal multicapa (MLP) configurando su arquitectura y parámetros principales. Recibe el número de entradas (`n_inputs`), una lista con el tamaño de cada capa oculta (`layer_sizes`), el número de salidas (`n_outputs`), la tasa de aprendizaje (`lr`), y las funciones de activación para cada capa (`activation_types`). Primero verifica que la cantidad de capas coincida con la cantidad de funciones de activación. Luego, recorre cada capa, construyendo objetos `Layer` con el tamaño correspondiente (entradas y salidas) y su función de activación asociada. Este proceso establece la estructura completa de la red, desde las entradas hasta la última capa, lista para el entrenamiento.
+Este constructor crea e inicializa una red neuronal multicapa (MLP) configurando su arquitectura y parámetros principales. Recibe el número de entradas (`n_inputs`), una lista con el tamaño de cada capa oculta (`layer_sizes`), el número de salidas (`n_outputs`), la tasa de aprendizaje (`lr`), y las funciones de activación para cada capa (`activation_types`). Primero verifica que la cantidad de capas coincida con la cantidad de funciones de activación. Luego, recorre cada capa, construyendo objetos `Layer` con el tamaño correspondiente (entradas y salidas) y su función de activación asociada. TAmbién se recibe la función de actualización de pesos que puede ser entre RMSProp, Adam y SGD. Este proceso establece la estructura completa de la red, desde las entradas hasta la última capa, lista para el entrenamiento.
 
 ```cpp
 Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-         double lr, std::vector<ActivationType> activation_types)
+         double lr, std::vector<ActivationType> activation_types,  optimizer_type opt = optimizer_type::SGD)
     : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
     if (layer_sizes.size() != activation_types.size())
     {
         throw std::invalid_argument("layer_sizes and activation_types must have the same length.");
     }
+
     int prev_size = n_inputs;
+
     for (size_t i = 0; i < layer_sizes.size(); ++i)
     {
+        std::cout << "Creating layer " << i + 1
+                  << " with " << layer_sizes[i]
+                  << " neurons and activation " << activation_types[i] << ".\n";
         layers.emplace_back(prev_size, layer_sizes[i], activation_types[i]);
         prev_size = layer_sizes[i];
     }
+    if (opt == optimizer_type::RMSPROP)
+        this->optimizer = std::make_shared<RMSProp>();
+    else if (opt == optimizer_type::ADAM)
+        this->optimizer = std::make_shared<Adam>();
+    else
+        this->optimizer = std::make_shared<SGD>();
 }
 ```
 
@@ -329,7 +376,7 @@ void forward(const std::vector<double> &input, std::vector<std::vector<double>> 
 
 #### `backward`
 
-Implementa la retropropagación del error desde la capa de salida hacia las capas anteriores, calculando los deltas (gradientes) para cada neurona según la diferencia entre la salida actual y la esperada, ajustada por la derivada de la función de activación. Luego, utiliza estos deltas para actualizar los pesos y sesgos de cada neurona, aplicando la regla del gradiente descendente con la tasa de aprendizaje, con el fin de minimizar el error de la red.
+Implementa la retropropagación del error desde la capa de salida hacia las capas anteriores, calculando los deltas (gradientes) para cada neurona según la diferencia entre la salida actual y la esperada, ajustada por la derivada de la función de activación. Luego, utiliza estos deltas para actualizar los pesos y sesgos de cada neurona, aplicando la función asociada al optimizador.
 
 ```cpp
 void backward(const std::vector<double> &input,
@@ -361,16 +408,17 @@ void backward(const std::vector<double> &input,
         }
     }
 
+
+    if (this->optimizer == nullptr)
+    {
+        std::cerr << "Error: optimizer is nullptr \n";
+        exit(1);
+    }
+
     // Actualización de pesos y biases
     for (size_t l = 0; l < layers.size(); ++l)
-    {
-        for (int i = 0; i < layers[l].get_output_size(); ++i)
-        {
-            for (int j = 0; j < layers[l].get_input_size(); ++j)
-                layers[l].get_neurons()[i].get_weights()[j] -= learning_rate * deltas[l][i] * activations[l][j];
-            layers[l].get_neurons()[i].get_bias() -= learning_rate * deltas[l][i];
-        }
-    }
+        layers[l].apply_update(this->optimizer, deltas[l], activations[l], learning_rate, l);
+}
 ```
 
 #### `one_hot_encode`
@@ -462,7 +510,7 @@ void test(const std::vector<std::vector<double>> &images, const std::vector<int>
 
 #### `train_test`
 
-Gestiona el ciclo completo de entrenamiento y evaluación de la red durante un número determinado de épocas, ejecutando en cada época el entrenamiento con el conjunto de datos de entrenamiento y, opcionalmente, la evaluación con el conjunto de prueba para medir la precisión. Además, registra el progreso en un archivo de log, muestra estadísticas por consola, guarda el modelo periódicamente y detiene el proceso anticipadamente si se cumplen criterios de convergencia o precisión deseada.
+Gestiona el ciclo completo de entrenamiento y evaluación de la red durante un número determinado de épocas, ejecutando en cada época el entrenamiento con el conjunto de datos de entrenamiento y, opcionalmente, la evaluación con el conjunto de prueba para medir la precisión. Además, registra el progreso en un archivo de log, muestra estadísticas por consola, guarda el modelo periódicamente, y el mejor modelo según el accuracy del test y detiene el proceso anticipadamente si se cumplen criterios de convergencia o precisión deseada.
 
 ```cpp
 void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
@@ -480,6 +528,7 @@ void train_test(std::vector<std::vector<double>> &train_images, std::vector<int>
     }
     int epoch = 0;
     double average_loss = 0, train_accuracy = 0, test_accuracy = 0;
+    double best_test_accuracy = -1.0;
     while (true)
     {
         // --- Entrenamiento ---
@@ -505,22 +554,29 @@ void train_test(std::vector<std::vector<double>> &train_images, std::vector<int>
                  << ", Train Time: " << train_time << "s";
 
         if (Test)
+        {
             log_line << ", Test Acc: " << test_accuracy << "%"
                      << ", Test Time: " << test_time << "s";
+            if (test_accuracy > best_test_accuracy)
+            {
+                best_test_accuracy = test_accuracy;
+                std::string best_model_path = (output_dir / "best_model.dat").string();
+                save_data(best_model_path);
+            }
+        }
 
         std::cout << log_line.str() << std::endl;
         log_file << log_line.str() << std::endl;
-
-        if (average_loss < 0.001 || test_accuracy > 98.0 || epoch >= epochs)
-        {
-            std::cout << "Stopping training: early stopping criteria met.\n";
-            break;
-        }
         if ((epoch + 1) % 10 == 0)
         {
             std::string filename = (output_dir / ("epoch_" + std::to_string(epoch + 1) + ".dat")).string();
             save_data(filename);
             std::cout << "Model saved at epoch " << (epoch + 1) << " to " << filename << ".\n";
+        }
+        if (average_loss < 0.00001 || epoch >= epochs)
+        {
+            std::cout << "Stopping training: early stopping criteria met.\n";
+            break;
         }
         epoch++;
     }
@@ -552,6 +608,8 @@ void save_data(const std::string &filename) const
     for (const auto &layer : layers)
         out << to_string(layer.get_activation()) << " ";
     out << "\n";
+
+    out << to_string(optimizer->get_type()) << "\n";
 
     // Capas y neuronas
     for (size_t i = 0; i < layers.size(); ++i)
@@ -596,6 +654,16 @@ bool load_data(const std::string &filename)
         in >> act;
         activations[i] = from_string(act);
     }
+    // Leer optimizador
+    std::string opt_type;
+    in >> opt_type;
+    optimizer_type opt = from_string_opt(opt_type);
+    if (opt == optimizer_type::RMSPROP)
+        this->optimizer = std::make_shared<RMSProp>();
+    else if (opt == optimizer_type::ADAM)
+        this->optimizer = std::make_shared<Adam>();
+    else
+        this->optimizer = std::make_shared<SGD>();
 
     // Construir capas y cargar datos
     layers.clear();
@@ -905,12 +973,14 @@ private:
     std::vector<int> layer_sizes;
     float learning_rate;
     std::vector<ActivationType> activations;
+    optimizer_type opt;
 
 public:
     bool load_config(const std::string &filename, const int inputs);
     const std::vector<int> &get_layer_sizes() const;
     float get_learning_rate() const;
     const std::vector<ActivationType> &get_activations() const;
+    const optimizer_type &get_optimizer() const;
     const void print_config();
 };
 ```
@@ -923,6 +993,7 @@ Carga los parámetros desde un archivo de texto siguiendo este formato:
 [capas]          // línea 1: tamaños de capa separados por espacio (ej: 32 16 10)
 [lr]             // línea 2: tasa de aprendizaje (ej: 0.01)
 [activaciones]   // línea 3: nombres de funciones por capa (ej: relu relu softmax)
+[optimizador]    // linea 4: nombre de optimizador (ej: sgd, rmsprop o adam)
 ```
 
 ```cpp
@@ -949,6 +1020,12 @@ bool Config::load_config(const std::string &filename, const int inputs)
   const std::vector<ActivationType> &get_activations() const;
   ```
 
+- `get_optimizer`: Devuelve las funciones de activación como `optimizer_type`.
+
+  ```cpp
+  const optimizer_type &get_optimizer() const;
+  ```
+
 ---
 
 #### Método `print_config`
@@ -968,7 +1045,9 @@ const void Config::print_config()
     std::cout << "Activations: \n";
     for (const auto &act : activations)
         std::cout << "\t" << to_string(act) << "\n";
+    std::cout << "Optimizer: " << to_string(opt) << "\n";
     std::cout << "==========================\n";
+    std::cout << std::endl;
 }
 ```
 
@@ -1090,6 +1169,215 @@ Convierte una cadena a su `ActivationType` correspondiente (ej. `"tanh"` → `TA
 
 ```cpp
 inline ActivationType from_string(const std::string &name)
+```
+
+---
+
+### Archivo `optimizer.hpp`
+
+Este archivo define las clases base y derivadas para los optimizadores usados en la actualización de pesos de una red neuronal. Incluye tres optimizadores principales: `SGD`, `RMSProp` y `Adam`. Cada uno implementa la función `update` para modificar los pesos y sesgo de una neurona dado un gradiente, tasa de aprendizaje y contexto (como el índice de la neurona). Además, se proveen funciones para convertir entre el tipo enumerado `optimizer_type` y su representación en `string`, facilitando la configuración externa.
+
+#### Enum class
+
+`enum class optimizer_type` define un conjunto cerrado y nombrado de constantes que representan los tipos de optimizadores disponibles. Usar `enum class` en vez de un `enum` tradicional evita colisiones de nombres, ya que el tipo es fuerte y se accede con el prefijo `optimizer_type::`. Esto mejora la seguridad y claridad del código.
+
+```cpp
+enum class optimizer_type
+{
+    SGD,
+    ADAM,
+    RMSPROP
+};
+```
+
+#### Clase base `Optimizer`
+
+La clase abstracta `Optimizer` declara una interfaz para actualizar pesos y bias con un método virtual puro `update`. También expone un método para obtener el tipo del optimizador. Esto permite que distintas implementaciones específicas (SGD, Adam, RMSProp) se usen de forma polimórfica, facilitando la extensibilidad.
+
+```cpp
+class Optimizer
+{
+public:
+    virtual void update(double learning_rate, std::vector<double> &weights, double &bias,
+                        const double *input, double delta,
+                        int input_size, int neuron_index) = 0;
+    virtual optimizer_type get_type() const = 0;
+    virtual ~Optimizer() = default;
+};
+```
+
+#### Clase `SGD` (Descenso de Gradiente Estocástico)
+
+SGD es la forma más simple de optimización, actualiza los pesos restando el gradiente multiplicado por la tasa de aprendizaje. La fórmula es:
+
+![](.docs/f3.png)
+
+```cpp
+class SGD : public Optimizer
+{
+public:
+    void update(double learning_rate, std::vector<double> &weights, double &bias,
+                const double *input, double delta,
+                int input_size, int) override
+    {
+        for (int j = 0; j < input_size; ++j)
+            weights[j] -= learning_rate * delta * input[j];
+        bias -= learning_rate * delta;
+    }
+    optimizer_type get_type() const override { return optimizer_type::SGD; }
+};
+```
+
+#### Clase `RMSProp`
+
+RMSProp mejora a SGD adaptando la tasa de aprendizaje para cada peso según la media móvil de los cuadrados de gradientes.
+Fórmulas:
+
+![](.docs/f4.png)
+
+```cpp
+class RMSProp : public Optimizer
+{
+private:
+    double tau;
+    double epsilon;
+    std::unordered_map<int, std::vector<double>> r_w;
+    std::unordered_map<int, double> r_b;
+
+public:
+    RMSProp(double tau = 0.99, double epsilon = 1e-8)
+        : tau(tau), epsilon(epsilon) {}
+
+    void update(double learning_rate, std::vector<double> &weights, double &bias,
+                const double *input, double delta, int input_size, int neuron_index) override
+    {
+        auto &r_weights = r_w[neuron_index];
+        auto &r_bias = r_b[neuron_index];
+
+        if (r_weights.size() != static_cast<size_t>(input_size))
+            r_weights.assign(input_size, 0.0);
+
+        for (int j = 0; j < input_size; ++j)
+        {
+            double grad = delta * input[j];
+            r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad * grad);
+            weights[j] -= learning_rate * grad / (std::sqrt(r_weights[j]) + epsilon);
+        }
+
+        double grad_b = delta;
+        r_bias = tau * r_bias + (1.0 - tau) * (grad_b * grad_b);
+        bias -= learning_rate * grad_b / (std::sqrt(r_bias) + epsilon);
+    }
+    optimizer_type get_type() const override { return optimizer_type::RMSPROP; }
+};
+```
+
+#### Clase `Adam`
+
+Adam combina RMSProp y momentum adaptativo, manteniendo dos momentos: el primero (media móvil de gradientes) y segundo (media móvil de gradientes al cuadrado). Se aplican correcciones de sesgo para compensar valores iniciales.
+Fórmulas clave:
+
+![](.docs/f5.png)
+
+```cpp
+class Adam : public Optimizer
+{
+private:
+    double beta1;
+    double beta2;
+    double epsilon;
+    std::unordered_map<int, std::vector<double>> m_w, v_w;
+    std::unordered_map<int, double> m_b, v_b;
+    std::unordered_map<int, int> timestep;
+
+    std::unordered_map<int, double> beta1_pow_t;
+    std::unordered_map<int, double> beta2_pow_t;
+
+public:
+    Adam(double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8)
+        : beta1(beta1), beta2(beta2), epsilon(epsilon) {}
+
+    void update(double learning_rate, std::vector<double> &weights, double &bias,
+                const double *input, double delta, int input_size, int neuron_index) override
+    {
+        auto &m_weights = m_w[neuron_index];
+        auto &v_weights = v_w[neuron_index];
+        auto &m_bias = m_b[neuron_index];
+        auto &v_bias = v_b[neuron_index];
+        auto &t = timestep[neuron_index];
+        auto &b1_pow = beta1_pow_t[neuron_index];
+        auto &b2_pow = beta2_pow_t[neuron_index];
+
+        if (m_weights.size() != static_cast<size_t>(input_size))
+        {
+            m_weights.assign(input_size, 0.0);
+            v_weights.assign(input_size, 0.0);
+            b1_pow = beta1;
+            b2_pow = beta2;
+            t = 1;
+        }
+        else
+        {
+            t += 1;
+            b1_pow *= beta1;
+            b2_pow *= beta2;
+        }
+
+        double correction1 = 1.0 / (1.0 - b1_pow);
+        double correction2 = 1.0 / (1.0 - b2_pow);
+
+        for (int j = 0; j < input_size; ++j)
+        {
+            double grad = delta * input[j];
+
+            m_weights[j] = beta1 * m_weights[j] + (1.0 - beta1) * grad;
+            v_weights[j] = beta2 * v_weights[j] + (1.0 - beta2) * grad * grad;
+
+            double m_hat = m_weights[j] * correction1;
+            double v_hat = v_weights[j] * correction2;
+
+            weights[j] -= learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
+        }
+
+        double grad_b = delta;
+        m_bias = beta1 * m_bias + (1.0 - beta1) * grad_b;
+        v_bias = beta2 * v_bias + (1.0 - beta2) * grad_b * grad_b;
+
+        double m_hat_b = m_bias * correction1;
+        double v_hat_b = v_bias * correction2;
+
+        bias -= learning_rate * m_hat_b / (std::sqrt(v_hat_b) + epsilon);
+    }
+    optimizer_type get_type() const override { return optimizer_type::ADAM; }
+};
+```
+
+#### Variables y funciones `inline`
+
+Se usan `inline` para definir variables constantes y funciones pequeñas, evitando múltiples definiciones y mejorando el rendimiento en compilación. Estas mappings permiten convertir entre el `enum` y cadenas legibles, facilitando el manejo de optimizadores por texto en configuraciones o logs.
+
+```cpp
+inline const std::unordered_map<optimizer_type, std::string> opt_to_string = {
+    {optimizer_type::SGD, "sgd"},
+    {optimizer_type::ADAM, "adam"},
+    {optimizer_type::RMSPROP, "rmsprop"}};
+
+inline const std::unordered_map<std::string, optimizer_type> string_to_opt = {
+    {"sgd", optimizer_type::SGD},
+    {"adam", optimizer_type::ADAM},
+    {"rmsprop", optimizer_type::RMSPROP}};
+
+inline std::string to_string(optimizer_type type)
+{
+    auto it = opt_to_string.find(type);
+    return it != opt_to_string.end() ? it->second : "unknown";
+}
+
+inline optimizer_type from_string_opt(const std::string &str)
+{
+    auto it = string_to_opt.find(str);
+    return it != string_to_opt.end() ? it->second : optimizer_type::SGD;
+}
 ```
 
 ---
@@ -1254,9 +1542,15 @@ def cargar_train_test_logs(path):
     return epochs, train_losses, train_accs, test_accs
 
 logs = {
-    "MNIST_50": "./output/MNIST_50/log.txt",
-    "MNIST_MINI_25": "./output/MNIST_MINI_25/log.txt"
+    "ADAM": "./output/MNIST_ADAM_001/log.txt",
+    "RMS": "./output/MNIST_RMS_001/log.txt",
+    "SGD": "./output/MNIST_SGD_001/log.txt"
 }
+
+global_epochs = None
+global_test_accs = {}
+global_train_accs = {}
+global_train_losses = {}
 
 for name, path in logs.items():
     if not os.path.exists(path):
@@ -1264,6 +1558,10 @@ for name, path in logs.items():
         continue
 
     epochs, train_losses, train_accs, test_accs = cargar_train_test_logs(path)
+    global_epochs = epochs
+    global_test_accs[name] = test_accs
+    global_train_accs[name] = train_accs
+    global_train_losses[name] = train_losses
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
     fig.suptitle(f"Entrenamiento y Evaluación - {name}")
@@ -1293,32 +1591,99 @@ for name, path in logs.items():
     plt.tight_layout()
     plt.show()
 
+# Gráfico TRAIN global
+fig, ax1 = plt.subplots(figsize=(14, 8))
+ax2 = ax1.twinx()
+
+colors = {"SGD": "blue", "RMS": "red", "ADAM": "green"}
+
+for name in global_train_losses:
+    ax1.plot(global_epochs, global_train_losses[name], label=f"{name} Loss", linewidth=2, linestyle="-", color=colors[name])
+
+for name in global_train_accs:
+    ax2.plot(global_epochs, global_train_accs[name], label=f"{name} Accuracy", linewidth=2, linestyle="--", color=colors[name])
+
+ax1.set_xlabel("Epochs")
+ax1.set_ylabel("Loss")
+ax2.set_ylabel("Training Accuracy")
+ax1.grid(True)
+ax2.set_ylim(0, 1.05)
+
+# Combinar ambas leyendas automáticamente y mostrarlas en el gráfico
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+plt.legend(lines1 + lines2, labels1 + labels2, loc="best", fontsize="large")
+
+plt.title("Comparación Global de Training Loss y Accuracy")
+plt.tight_layout()
+plt.show()
+
+
+
+# Gráfico TEST global
+plt.figure(figsize=(14, 8))
+for name, accs in global_test_accs.items():
+    plt.plot(global_epochs, accs, label=f"{name}", linewidth=2)
+
+plt.title("Comparación Global de Test Accuracy")
+plt.xlabel("Epochs")
+plt.ylabel("Test Accuracy")
+plt.ylim(0.95, 1.001)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
 
 etiquetas = [
-    "MNIST - 50 epochs",
-    "MNIST - 40 epochs",
-    "MNIST - 30 epochs",
-    "MNIST - 20 epochs",
-    "MNIST - 10 epochs",
-    "MNIST - 5 epochs",
-    "MNIST_MINI - 25 epochs",
-    "MNIST_MINI - 20 epochs",
-    "MNIST_MINI - 10 epochs",
-    "MNIST_MINI - 5 epochs",
-    "MNIST_3_Layers - 10 epochs"
+    "ADAM - 50 epochs",
+    "ADAM - 40 epochs",
+    "ADAM - 30 epochs",
+    "ADAM - 20 epochs",
+    "ADAM - 10 epochs",
+    "RMS - 50 epochs",
+    "RMS - 40 epochs",
+    "RMS - 30 epochs",
+    "RMS - 20 epochs",
+    "RMS - 10 epochs",
+    "SGD - 50 epochs",
+    "SGD - 40 epochs",
+    "SGD - 30 epochs",
+    "SGD - 20 epochs",
+    "SGD - 10 epochs",
 ]
 
-test_acc_values = [0.325, 0.325, 0.325, 0.325, 0.325, 0.325, 0.35, 0.35, 0.35, 0.35, 0.275]
+test_acc_values = [0.35, 0.35, 0.35, 0.275, 0.35,
+                   0.225, 0.275, 0.25, 0.325, 0.275,
+                   0.35, 0.30, 0.35, 0.375, 0.425]
+def extraer_epochs(label):
+    return int(label.split('-')[1].strip().split()[0])
+data = {
+    "ADAM": [],
+    "RMS": [],
+    "SGD": []
+}
+epochs_ordenados = sorted({extraer_epochs(e) for e in etiquetas if e.startswith("ADAM")}, reverse=True)
 
-x_pos = list(range(len(etiquetas)))
+for optim in data.keys():
+    filtered = [(extraer_epochs(e), val) for e, val in zip(etiquetas, test_acc_values) if e.startswith(optim)]
+    filtered.sort(key=lambda x: x[0], reverse=True)
+    data[optim] = [val for _, val in filtered]
 
 plt.figure(figsize=(12, 6))
-plt.plot(x_pos, test_acc_values, marker='o', linestyle='-', color='purple')
-plt.xticks(x_pos, etiquetas, rotation=45, ha='right', fontsize=9)
+
+colores = {"ADAM": "green", "RMS": "red", "SGD": "blue"}
+
+for optim, valores in data.items():
+    plt.plot(epochs_ordenados, valores, marker='o', linestyle='-', color=colores[optim], label=optim)
+
+plt.xticks(epochs_ordenados, [f"{e} epochs" for e in epochs_ordenados], fontsize=10)
 plt.ylim(0, 1.0)
 plt.ylabel("External Test Accuracy")
+plt.xlabel("Epochs")
 plt.title("Comparación de Test Accuracy según configuración de entrenamiento")
 plt.grid(True)
+plt.legend(title="Optimizador")
 plt.tight_layout()
 plt.show()
 ```
@@ -1339,19 +1704,25 @@ python graphic.py
 
 ### Salida
 
-![Grafico](.docs/mnist_50.png)
+![Entrenamiento con SGD](.docs/sgd.png)
 
-![Grafico](.docs/mnist_mini.png)
+![Entrenamiento con RMSprop](.docs/rms.png)
 
-![Grafico](.docs/test_acc.png)
+![Entrenamiento con Adam](.docs/adam.png)
+
+![Entrenamiento Global](.docs/train_opt.png)
+
+![Test Global](.docs/test_opt.png)
+
+![Test Externo](.docs/test_2.png)
 
 ## Conclusiones
 
-Los resultados obtenidos muestran que el modelo alcanza muy rápidamente una precisión del 100% en el conjunto de entrenamiento, pero esto no se traduce necesariamente en un mejor rendimiento en datos externos. Con solo 25 épocas, el modelo ya alcanza su mejor precisión en test interno (98.28%), siendo incluso superior a la obtenida con 50 épocas (98.24%), lo que sugiere que continuar entrenando más allá de ese punto no mejora el modelo y puede provocar sobreajuste.
+Los resultados obtenidos al comparar los tres optimizadores (Adam, RMSProp y SGD) evidencian claras diferencias tanto en precisión como en velocidad de entrenamiento. En términos de desempeño final, Adam fue el optimizador que alcanzó la mayor precisión sobre el conjunto de prueba, logrando un 97.97% tras 50 épocas. Aunque RMSProp y SGD también presentaron buenos resultados, con 97.62% y 96.6% respectivamente, Adam mostró una progresión más rápida hacia altos niveles de precisión, superando el 97% ya en la época 5, mientras que RMSProp y SGD necesitaron más de 10 épocas para acercarse a ese rango.
 
-Al evaluar ambos modelos (25 y 50 épocas) en un conjunto externo, la precisión fue de apenas 32.5% en ambos casos, muy por debajo de lo observado internamente. Esto evidencia un claro caso de sobreentrenamiento, donde el modelo memoriza los datos originales pero pierde capacidad de generalización. Las gráficas lo confirman: la pérdida sigue disminuyendo, pero la precisión en test se estanca o empeora levemente, lo que indica que el modelo está aprendiendo patrones específicos del conjunto de entrenamiento en lugar de generalizar.
+No obstante, el costo computacional de Adam fue notablemente mayor. Su tiempo promedio por época rondó los 192 segundos, en contraste con los aproximadamente 137 segundos de RMSProp y solo 62 segundos de SGD. Esto indica que aunque Adam proporciona una mejora en precisión, lo hace a expensas de mayor tiempo de cómputo. En aplicaciones donde el tiempo de entrenamiento es un factor crítico, esta diferencia puede ser significativa. En cambio, SGD fue consistentemente el más rápido, aunque sacrificando parte de la precisión final y mostrando una curva de aprendizaje más lenta.
 
-Por tanto, el momento óptimo para detener el entrenamiento se encuentra entre las 20 y 25 épocas, cuando la precisión en test deja de mejorar y la pérdida ya es baja. Entrenar más allá de ese punto solo aumenta el riesgo de overfitting sin aportar mejoras reales. Esto se acentúa especialmente cuando se entrena con conjuntos pequeños o poco representativos como MNIST MINI (entrenado con 20,000 imagenes y testeado con 5,000), donde el modelo se ajusta perfectamente a los datos disponibles pero se iguala a la precision con ejemplos nuevos. AUnque en el caso de aumentar layers si se vio una falla rotunda ya que con 10 epochs llego a 27,5% con los ejemplos nuevos, fallando rotundamente.
+Por lo tanto, no se observa un sobreajuste significativo en ninguno de los optimizadores, ya que las precisiones de entrenamiento y prueba convergen de forma estable. Aunque la precisión de entrenamiento alcanza valores cercanos al 99.8-99.9%, la precisión en prueba se mantiene alta, entre 97.4% y 97.9%, sin caídas que indiquen overfitting. Esto sugiere que los modelos están bien ajustados, aprovechando la capacidad de los optimizadores para generalizar sin memorizar ruido o patrones específicos del entrenamiento. Tampoco se detecta underfitting, dado que las pérdidas y precisiones reflejan un aprendizaje adecuado y un desempeño robusto en datos externos al MNIST estándar. Sin embargo, al evaluar con un dataset externo, se observa que RMS es el optimizador que menos logra captar, alcanzando un valor máximo alrededor del 35% en distintas fases del entrenamiento, en cambio SGD llega a ser el más alto con 42% en 10 epochs.
 
 ## Author
 

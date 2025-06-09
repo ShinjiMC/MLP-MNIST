@@ -1,3 +1,4 @@
 128 10
-0.01 
+0.001 
 relu softmax 
+rmsprop

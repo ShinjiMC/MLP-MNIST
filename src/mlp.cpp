@@ -1,7 +1,7 @@
 #include "mlp.hpp"
 
 Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-         double lr, std::vector<ActivationType> activation_types)
+         double lr, std::vector<ActivationType> activation_types, optimizer_type opt)
     : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
     if (layer_sizes.size() != activation_types.size())
@@ -19,6 +19,12 @@ Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
         layers.emplace_back(prev_size, layer_sizes[i], activation_types[i]);
         prev_size = layer_sizes[i];
     }
+    if (opt == optimizer_type::RMSPROP)
+        this->optimizer = std::make_shared<RMSProp>();
+    else if (opt == optimizer_type::ADAM)
+        this->optimizer = std::make_shared<Adam>();
+    else
+        this->optimizer = std::make_shared<SGD>();
 }
 
 void Mlp::forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations)
@@ -62,16 +68,15 @@ void Mlp::backward(const std::vector<double> &input,
         }
     }
 
+    if (this->optimizer == nullptr)
+    {
+        std::cerr << "Error: optimizer is nullptr \n";
+        exit(1);
+    }
+
     // Actualización de pesos y biases
     for (size_t l = 0; l < layers.size(); ++l)
-    {
-        for (int i = 0; i < layers[l].get_output_size(); ++i)
-        {
-            for (int j = 0; j < layers[l].get_input_size(); ++j)
-                layers[l].get_neurons()[i].get_weights()[j] -= learning_rate * deltas[l][i] * activations[l][j];
-            layers[l].get_neurons()[i].get_bias() -= learning_rate * deltas[l][i];
-        }
-    }
+        layers[l].apply_update(this->optimizer, deltas[l], activations[l], learning_rate, l);
 }
 
 void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
@@ -89,6 +94,7 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
 
     for (size_t k = 0; k < n; ++k)
     {
+
         size_t i = indices[k];
         const auto &input = images[i];
         int label = labels[i];
@@ -96,8 +102,8 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
         forward(input, activations);
 
         total_loss += cross_entropy_loss(activations.back(), target);
+        // std::cout << "Image " << k+1 << " of " << n << "\n";
         backward(input, activations, target);
-
         int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == label)
             ++correct;
@@ -137,6 +143,7 @@ void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector
     }
     int epoch = 0;
     double average_loss = 0, train_accuracy = 0, test_accuracy = 0;
+    double best_test_accuracy = -1.0;
     while (true)
     {
         // --- Entrenamiento ---
@@ -160,24 +167,30 @@ void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector
                  << ", Train Loss: " << average_loss
                  << ", Train Acc: " << train_accuracy << "%"
                  << ", Train Time: " << train_time << "s";
-
         if (Test)
+        {
             log_line << ", Test Acc: " << test_accuracy << "%"
                      << ", Test Time: " << test_time << "s";
+            if (test_accuracy > best_test_accuracy)
+            {
+                best_test_accuracy = test_accuracy;
+                std::string best_model_path = (output_dir / "best_model.dat").string();
+                save_data(best_model_path);
+            }
+        }
 
         std::cout << log_line.str() << std::endl;
         log_file << log_line.str() << std::endl;
-
-        if (average_loss < 0.001 || test_accuracy > 98.0 || epoch >= epochs)
-        {
-            std::cout << "Stopping training: early stopping criteria met.\n";
-            break;
-        }
         if ((epoch + 1) % 10 == 0)
         {
             std::string filename = (output_dir / ("epoch_" + std::to_string(epoch + 1) + ".dat")).string();
             save_data(filename);
             std::cout << "Model saved at epoch " << (epoch + 1) << " to " << filename << ".\n";
+        }
+        if (average_loss < 0.00001 || epoch >= epochs)
+        {
+            std::cout << "Stopping training: early stopping criteria met.\n";
+            break;
         }
         epoch++;
     }
@@ -203,6 +216,9 @@ void Mlp::save_data(const std::string &filename) const
     for (const auto &layer : layers)
         out << to_string(layer.get_activation()) << " ";
     out << "\n";
+
+    // Optimizador
+    out << to_string(optimizer->get_type()) << "\n";
 
     // Capas y neuronas
     for (size_t i = 0; i < layers.size(); ++i)
@@ -241,6 +257,16 @@ bool Mlp::load_data(const std::string &filename)
         in >> act;
         activations[i] = from_string(act);
     }
+    // Leer optimizador
+    std::string opt_type;
+    in >> opt_type;
+    optimizer_type opt = from_string_opt(opt_type);
+    if (opt == optimizer_type::RMSPROP)
+        this->optimizer = std::make_shared<RMSProp>();
+    else if (opt == optimizer_type::ADAM)
+        this->optimizer = std::make_shared<Adam>();
+    else
+        this->optimizer = std::make_shared<SGD>();
 
     // Construir capas y cargar datos
     layers.clear();

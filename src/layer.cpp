@@ -49,3 +49,11 @@ void Layer::load(std::istream &in)
         neurons[j].load(in, input_size);
     }
 }
+
+void Layer::apply_update(std::shared_ptr<Optimizer> optimizer, const std::vector<double> &delta,
+                         const std::vector<double> &input,
+                         double learning_rate, int layer_index)
+{
+    for (int i = 0; i < this->output_size; ++i)
+        neurons[i].update(optimizer, learning_rate, input.data(), delta[i], this->input_size, i, layer_index);
+}

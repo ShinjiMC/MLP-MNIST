@@ -2,7 +2,7 @@
 #include <random>
 #include "neuron.hpp"
 #include "activation.hpp"
-
+#include <memory>
 class Layer
 {
 private:
@@ -29,7 +29,10 @@ public:
         neurons.resize(output_size, Neuron());
     }
     void linear_forward(const std::vector<double> &input, std::vector<double> &output);
-
+    void apply_update(std::shared_ptr<Optimizer> optimizer,
+                      const std::vector<double> &delta,
+                      const std::vector<double> &input,
+                      double learning_rate, int layer_index);
     // gets
     int get_input_size() { return input_size; }
     int get_output_size() { return output_size; }

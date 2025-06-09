@@ -79,6 +79,21 @@ bool Config::load_config(const std::string &filename, const int inputs)
         return false;
     }
 
+    // Leer optimizador
+    if (!std::getline(file, line))
+    {
+        std::cerr << "Error: Could not read optimizer line.\n";
+        return false;
+    }
+    iss.clear();
+    iss.str(line);
+    std::string opt_name;
+    if (!(iss >> opt_name))
+    {
+        std::cerr << "Error: Invalid optimizer name.\n";
+        return false;
+    }
+    this->opt = from_string_opt(opt_name);
     return true;
 }
 
@@ -94,6 +109,7 @@ const void Config::print_config()
     std::cout << "Activations: \n";
     for (const auto &act : activations)
         std::cout << "\t" << to_string(act) << "\n";
+    std::cout << "Optimizer: " << to_string(opt) << "\n";
     std::cout << "==========================\n";
     std::cout << std::endl;
 }

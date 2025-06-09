@@ -12,10 +12,11 @@ private:
     int n_outputs;
     double learning_rate;
     std::vector<Layer> layers;
+    std::shared_ptr<Optimizer> optimizer;
 
 public:
     Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-        double lr, std::vector<ActivationType> activation_types);
+        double lr, std::vector<ActivationType> activation_types, optimizer_type opt = optimizer_type::SGD);
     Mlp() = default;
     void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations);
     void backward(const std::vector<double> &input,
