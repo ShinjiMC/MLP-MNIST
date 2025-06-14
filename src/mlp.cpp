@@ -29,15 +29,17 @@ Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
 
     if (regularizer)
     {
-        std::cout << "Using L2 regularization.\n";
-        this->regularizer = std::make_shared<L2Regularizer>(0.01);
+        double l2_penalty = 0.01; // Default value, can be adjusted
+        this->regularizer = std::make_shared<L2Regularizer>(l2_penalty);
         this->optimizer->set_regularizer(this->regularizer);
+        std::cout << "Using L2 regularization: " << l2_penalty << ".\n";
     }
 
     if (dropout)
     {
-        std::cout << "Using dropout.\n";
+        double dropout_rate = 0.5; // Default value, can be adjusted
         this->dropout = std::make_shared<DropoutController>(0.5);
+        std::cout << "Using dropout: " << dropout_rate << ".\n";
     }
 }
 

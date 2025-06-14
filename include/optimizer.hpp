@@ -71,18 +71,14 @@ public:
 
         if (r_weights.size() != static_cast<size_t>(input_size))
             r_weights.assign(input_size, 0.0);
-
-        std::vector<double> grad_weights(input_size);
-        for (int j = 0; j < input_size; ++j)
-            grad_weights[j] = delta * input[j];
-
-        if (regularizer)
-            regularizer->apply(weights, grad_weights);
-
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
         for (int j = 0; j < input_size; ++j)
         {
-            r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad_weights[j] * grad_weights[j]);
-            weights[j] -= learning_rate * grad_weights[j] / (std::sqrt(r_weights[j]) + epsilon);
+            double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];
+            r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad * grad);
+            weights[j] -= learning_rate * grad / (std::sqrt(r_weights[j]) + epsilon);
         }
 
         double grad_b = delta;
@@ -137,18 +133,13 @@ public:
 
         double correction1 = 1.0 / (1.0 - b1_pow);
         double correction2 = 1.0 / (1.0 - b2_pow);
-
-        std::vector<double> grad_weights(input_size);
-        for (int j = 0; j < input_size; ++j)
-            grad_weights[j] = delta * input[j];
-
-        if (regularizer)
-            regularizer->apply(weights, grad_weights);
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
 
         for (int j = 0; j < input_size; ++j)
         {
-            double grad = grad_weights[j];
-
+            double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];
             m_weights[j] = beta1 * m_weights[j] + (1.0 - beta1) * grad;
             v_weights[j] = beta2 * v_weights[j] + (1.0 - beta2) * grad * grad;
 

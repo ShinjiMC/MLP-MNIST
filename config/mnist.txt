@@ -1,4 +1,4 @@
 128 10
 0.001 
 relu softmax 
-sgd
+adam
