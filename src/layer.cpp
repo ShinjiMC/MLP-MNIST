@@ -1,14 +1,17 @@
 #include "layer.hpp"
-void Layer::linear_forward(const std::vector<double> &input, std::vector<double> &output)
+void Layer::linear_forward(const std::vector<double> &input,
+                           std::vector<double> &output) const
 {
     for (int i = 0; i < this->output_size; ++i)
     {
         output[i] = this->neurons[i].get_biass();
         for (int j = 0; j < this->input_size; ++j)
-        {
             output[i] += input[j] * this->neurons[i].get_weightss()[j];
-        }
     }
+}
+
+void Layer::apply_activation(std::vector<double> &output) const
+{
     if (this->activation == SIGMOID)
     {
         for (double &val : output)
@@ -19,14 +22,14 @@ void Layer::linear_forward(const std::vector<double> &input, std::vector<double>
         for (double &val : output)
             val = relu(val);
     }
-    else if (this->activation == SOFTMAX)
-    {
-        softmax(output, output);
-    }
     else if (this->activation == TANH)
     {
         for (double &val : output)
             val = tanh(val);
+    }
+    else if (this->activation == SOFTMAX)
+    {
+        softmax(output, output);
     }
 }
 

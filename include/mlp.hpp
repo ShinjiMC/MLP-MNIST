@@ -4,6 +4,9 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include "dropout.hpp"
+#include "optimizer.hpp"
+#include "regularizer.hpp"
 
 class Mlp
 {
@@ -12,13 +15,19 @@ private:
     int n_outputs;
     double learning_rate;
     std::vector<Layer> layers;
-    std::shared_ptr<Optimizer> optimizer;
+    std::shared_ptr<Optimizer> optimizer = nullptr;
+    std::shared_ptr<Regularizer> regularizer = nullptr;
+    std::shared_ptr<DropoutController> dropout = nullptr;
 
 public:
     Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-        double lr, std::vector<ActivationType> activation_types, optimizer_type opt = optimizer_type::SGD);
+        double lr, std::vector<ActivationType> activation_types,
+        optimizer_type opt = optimizer_type::SGD,
+        bool regularizer = false, bool dropout = false);
     Mlp() = default;
-    void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations);
+    void forward(const std::vector<double> &input,
+                 std::vector<std::vector<double>> &activations,
+                 bool train);
     void backward(const std::vector<double> &input,
                   const std::vector<std::vector<double>> &activations,
                   const std::vector<double> &expected);

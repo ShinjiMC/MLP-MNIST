@@ -114,6 +114,27 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
+# Gráfico combinado: Train Accuracy vs Test Accuracy
+plt.figure(figsize=(14, 8))
+colors = {"SGD": "blue", "RMS": "red", "ADAM": "green"}
+
+for name in global_train_accs:
+    plt.plot(global_epochs, global_train_accs[name], label=f"{name} Train Accuracy",
+             linewidth=2, linestyle="--", color=colors[name])
+    
+for name in global_test_accs:
+    plt.plot(global_epochs, global_test_accs[name], label=f"{name} Test Accuracy",
+             linewidth=2, linestyle="-", color=colors[name])
+
+plt.title("Comparación Global de Accuracy: Entrenamiento vs Test")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.ylim(0.875, 1.001)  # Ajusta según tu rango real
+plt.grid(True)
+plt.legend(fontsize="large", loc="lower right")
+plt.tight_layout()
+plt.show()
+
 
 etiquetas = [
     "ADAM - 50 epochs",

@@ -4,6 +4,8 @@
 #include <cmath>
 #include <unordered_map>
 #include <string>
+#include <memory>
+#include "regularizer.hpp"
 
 enum class optimizer_type
 {
@@ -14,11 +16,18 @@ enum class optimizer_type
 
 class Optimizer
 {
+protected:
+    std::shared_ptr<Regularizer> regularizer = nullptr;
+
 public:
     virtual void update(double learning_rate, std::vector<double> &weights, double &bias,
                         const double *input, double delta,
                         int input_size, int neuron_index) = 0;
     virtual optimizer_type get_type() const = 0;
+    void set_regularizer(std::shared_ptr<Regularizer> reg)
+    {
+        this->regularizer = reg;
+    }
     virtual ~Optimizer() = default;
 };
 
@@ -29,8 +38,14 @@ public:
                 const double *input, double delta,
                 int input_size, int) override
     {
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
         for (int j = 0; j < input_size; ++j)
-            weights[j] -= learning_rate * delta * input[j];
+        {
+            double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];
+            weights[j] -= learning_rate * grad;
+        }
         bias -= learning_rate * delta;
     }
     optimizer_type get_type() const override { return optimizer_type::SGD; }
@@ -57,11 +72,17 @@ public:
         if (r_weights.size() != static_cast<size_t>(input_size))
             r_weights.assign(input_size, 0.0);
 
+        std::vector<double> grad_weights(input_size);
+        for (int j = 0; j < input_size; ++j)
+            grad_weights[j] = delta * input[j];
+
+        if (regularizer)
+            regularizer->apply(weights, grad_weights);
+
         for (int j = 0; j < input_size; ++j)
         {
-            double grad = delta * input[j];
-            r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad * grad);
-            weights[j] -= learning_rate * grad / (std::sqrt(r_weights[j]) + epsilon);
+            r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad_weights[j] * grad_weights[j]);
+            weights[j] -= learning_rate * grad_weights[j] / (std::sqrt(r_weights[j]) + epsilon);
         }
 
         double grad_b = delta;
@@ -117,9 +138,16 @@ public:
         double correction1 = 1.0 / (1.0 - b1_pow);
         double correction2 = 1.0 / (1.0 - b2_pow);
 
+        std::vector<double> grad_weights(input_size);
+        for (int j = 0; j < input_size; ++j)
+            grad_weights[j] = delta * input[j];
+
+        if (regularizer)
+            regularizer->apply(weights, grad_weights);
+
         for (int j = 0; j < input_size; ++j)
         {
-            double grad = delta * input[j];
+            double grad = grad_weights[j];
 
             m_weights[j] = beta1 * m_weights[j] + (1.0 - beta1) * grad;
             v_weights[j] = beta2 * v_weights[j] + (1.0 - beta2) * grad * grad;

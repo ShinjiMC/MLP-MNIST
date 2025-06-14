@@ -28,7 +28,8 @@ public:
     {
         neurons.resize(output_size, Neuron());
     }
-    void linear_forward(const std::vector<double> &input, std::vector<double> &output);
+    void linear_forward(const std::vector<double> &input, std::vector<double> &output) const;
+    void apply_activation(std::vector<double> &output) const;
     void apply_update(std::shared_ptr<Optimizer> optimizer,
                       const std::vector<double> &delta,
                       const std::vector<double> &input,
@@ -44,4 +45,9 @@ public:
     const int get_neurons_size() const { return neurons.size(); }
     void save(std::ostream &out, const int i) const;
     void load(std::istream &in);
+    void compute_penalty(double &penalty) const
+    {
+        for (const auto &neuron : neurons)
+            neuron.compute_penalty(penalty);
+    }
 };

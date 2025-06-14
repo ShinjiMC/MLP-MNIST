@@ -33,4 +33,9 @@ public:
     void update(std::shared_ptr<Optimizer> optimizer, double learning_rate,
                 const double *input, double delta,
                 int input_size, int neuron_index, int layer_index);
+    void compute_penalty(double &penalty) const
+    {
+        for (const auto &weight : weights)
+            penalty += weight * weight;
+    }
 };

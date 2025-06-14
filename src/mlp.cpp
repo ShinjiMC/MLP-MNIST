@@ -1,7 +1,8 @@
 #include "mlp.hpp"
 
 Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-         double lr, std::vector<ActivationType> activation_types, optimizer_type opt)
+         double lr, std::vector<ActivationType> activation_types, optimizer_type opt,
+         bool regularizer, bool dropout)
     : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
     if (layer_sizes.size() != activation_types.size())
@@ -25,17 +26,34 @@ Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
         this->optimizer = std::make_shared<Adam>();
     else
         this->optimizer = std::make_shared<SGD>();
+
+    if (regularizer)
+    {
+        std::cout << "Using L2 regularization.\n";
+        this->regularizer = std::make_shared<L2Regularizer>(0.01);
+        this->optimizer->set_regularizer(this->regularizer);
+    }
+
+    if (dropout)
+    {
+        std::cout << "Using dropout.\n";
+        this->dropout = std::make_shared<DropoutController>(0.5);
+    }
 }
 
-void Mlp::forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations)
+void Mlp::forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations, bool train)
 {
     activations.clear();
     activations.push_back(input);
 
-    for (auto &layer : layers)
+    for (size_t i = 0; i < layers.size(); ++i)
     {
+        auto &layer = layers[i];
         std::vector<double> output(layer.get_output_size());
         layer.linear_forward(activations.back(), output);
+        layer.apply_activation(output);
+        if (dropout && train && i < layers.size() - 1)
+            dropout->apply(output);
         activations.push_back(output);
     }
 }
@@ -74,7 +92,6 @@ void Mlp::backward(const std::vector<double> &input,
         exit(1);
     }
 
-    // Actualización de pesos y biases
     for (size_t l = 0; l < layers.size(); ++l)
         layers[l].apply_update(this->optimizer, deltas[l], activations[l], learning_rate, l);
 }
@@ -90,6 +107,7 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
     std::vector<double> target(n_outputs);
     std::vector<std::vector<double>> activations;
     double total_loss = 0.0;
+    double penalty = 0.0;
     int correct = 0;
 
     for (size_t k = 0; k < n; ++k)
@@ -99,16 +117,16 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
         const auto &input = images[i];
         int label = labels[i];
         one_hot_encode(label, target);
-        forward(input, activations);
-
+        forward(input, activations, true);
         total_loss += cross_entropy_loss(activations.back(), target);
-        // std::cout << "Image " << k+1 << " of " << n << "\n";
         backward(input, activations, target);
         int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == label)
             ++correct;
     }
-    average_loss = total_loss / n;
+    if (regularizer)
+        penalty = regularizer->compute_penalty(layers);
+    average_loss = (total_loss + penalty) / n;
     train_accuracy = 100.0 * correct / n;
 }
 
@@ -119,7 +137,7 @@ void Mlp::test(const std::vector<std::vector<double>> &images, const std::vector
 
     for (size_t i = 0; i < images.size(); ++i)
     {
-        forward(images[i], activations);
+        forward(images[i], activations, false);
         int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == labels[i])
             ++correct;
@@ -291,7 +309,7 @@ void Mlp::test_info(const std::vector<std::vector<double>> &X_test, const std::v
 
     for (size_t i = 0; i < X_test.size(); ++i)
     {
-        forward(X_test[i], activations);
+        forward(X_test[i], activations, false);
         int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == y_test[i])
             ++correct;

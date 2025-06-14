@@ -13,6 +13,7 @@ add_executable(mlp_train
      src/neuron.cpp
      src/dataset.cpp
      src/config.cpp
+     src/regularizer.cpp
 )
 
 # Ejecutable de prueba
@@ -23,4 +24,5 @@ add_executable(mlp_test
      src/neuron.cpp
      src/dataset.cpp
      src/config.cpp
+     src/regularizer.cpp
 )
