@@ -21,7 +21,7 @@ public:
             if (dist(rng) < dropout_rate)
                 val = 0.0;
             else
-                val *= (1.0 / (1.0 - dropout_rate)); // aplicar el escalado aquí
+                val *= (1.0 / (1.0 - dropout_rate));
         }
     }
 

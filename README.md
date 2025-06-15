@@ -37,6 +37,7 @@ public:
     void update(std::shared_ptr<Optimizer> optimizer, double learning_rate,
                 const double *input, double delta,
                 int input_size, int neuron_index, int layer_index);
+    void compute_penalty(double &penalty) const;
 };
 ```
 
@@ -122,6 +123,18 @@ void Neuron::update(std::shared_ptr<Optimizer> opt, double learning_rate,
 }
 ```
 
+#### Cálculo de Penalización (Regularización L2)
+
+Este método acumula la penalización por regularización L2 para la neurona. Recorre cada peso (`weight`) y suma su cuadrado al valor acumulado de `penalty`. Esta penalización se utiliza típicamente para evitar el sobreajuste al modelo, forzando a los pesos a mantenerse pequeños.
+
+```cpp
+void Neuron::compute_penalty(double &penalty) const
+{
+    for (const auto &weight : weights)
+        penalty += weight * weight;
+}
+```
+
 ---
 
 ### Clase Layer
@@ -141,6 +154,7 @@ public:
     Layer(int in_size, int out_size, ActivationType act);
     Layer(int in_size, int out_size, ActivationType act, bool true_random);
     void linear_forward(const std::vector<double> &input, std::vector<double> &output);
+    void apply_activation(std::vector<double> &output) const;
     void apply_update(std::shared_ptr<Optimizer> optimizer,
                       const std::vector<double> &delta,
                       const std::vector<double> &input,
@@ -158,6 +172,7 @@ public:
     // I/O
     void save(std::ostream &out, const int i) const;
     void load(std::istream &in);
+    void compute_penalty(double &penalty) const;
 };
 ```
 
@@ -203,6 +218,8 @@ El método `linear_forward` aplica la operación de propagación hacia adelante 
 
 ![Funcion forward](.docs/f2.png)
 
+En la funcón `apply_activation`.
+
 ```cpp
 void Layer::linear_forward(const std::vector<double> &input, std::vector<double> &output)
 {
@@ -223,6 +240,29 @@ void Layer::linear_forward(const std::vector<double> &input, std::vector<double>
         softmax(output, output);
     else if (activation == TANH)
         for (double &val : output) val = tanh(val);
+}
+
+void Layer::apply_activation(std::vector<double> &output) const
+{
+    if (this->activation == SIGMOID)
+    {
+        for (double &val : output)
+            val = sigmoid(val);
+    }
+    else if (this->activation == RELU)
+    {
+        for (double &val : output)
+            val = relu(val);
+    }
+    else if (this->activation == TANH)
+    {
+        for (double &val : output)
+            val = tanh(val);
+    }
+    else if (this->activation == SOFTMAX)
+    {
+        softmax(output, output);
+    }
 }
 ```
 
@@ -280,9 +320,17 @@ std::vector<Neuron> &get_neurons();    // Neuronas (modificable)
 ActivationType get_activation() const; // Tipo de activación usado
 ```
 
----
+#### Cálculo de Penalización en la Capa
 
-Claro, aquí tienes una **explicación completa de la clase `Mlp`** siguiendo el estilo del template anterior:
+Este método acumula la penalización por regularización L2 de todos los pesos de la capa. Para ello, llama a `compute_penalty` de cada neurona que la compone, sumando sus respectivas penalizaciones al valor total de `penalty`.
+
+```cpp
+void Layer::compute_penalty(double &penalty) const
+{
+    for (const auto &neuron : neurons)
+        neuron.compute_penalty(penalty);
+}
+```
 
 ---
 
@@ -298,22 +346,30 @@ private:
     int n_outputs;
     double learning_rate;
     std::vector<Layer> layers;
-    std::shared_ptr<Optimizer> optimizer;
+    std::shared_ptr<Optimizer> optimizer = nullptr;
+    std::shared_ptr<Regularizer> regularizer = nullptr;
+    std::shared_ptr<DropoutController> dropout = nullptr;
 
 public:
     Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-        double lr, std::vector<ActivationType> activation_types);
+        double lr, std::vector<ActivationType> activation_types,
+        optimizer_type opt = optimizer_type::SGD,
+        bool regularizer = false, bool dropout = false);
     Mlp() = default;
-    void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations);
+    void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations, bool train);
     void backward(const std::vector<double> &input,
                   const std::vector<std::vector<double>> &activations,
                   const std::vector<double> &expected);
     void one_hot_encode(int label, std::vector<double> &target);
-    double cross_entropy_loss(const std::vector<double> &predicted, const std::vector<double> &expected);
-    void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
-               double &average_loss, double &train_accuracy);
-    void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy);
-    void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
+    double cross_entropy_loss(const std::vector<double> &predicted,
+                             const std::vector<double> &expected);
+    void train(std::vector<std::vector<double>> &images,
+                std::vector<int> & labels,double &average_loss,
+                double &train_accuracy);
+    void test(const std::vector<std::vector<double>> &images,
+             const std::vector<int> &labels, double &test_accuracy);
+    void train_test(std::vector<std::vector<double>> &train_images,
+                    std::vector<int> &train_labels,
                     const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
                     bool Test, const std::string &dataset_filename, int epochs = 1000);
     void save_data(const std::string &filename) const;
@@ -322,13 +378,20 @@ public:
 };
 ```
 
+---
+
 #### Constructor
 
-Este constructor crea e inicializa una red neuronal multicapa (MLP) configurando su arquitectura y parámetros principales. Recibe el número de entradas (`n_inputs`), una lista con el tamaño de cada capa oculta (`layer_sizes`), el número de salidas (`n_outputs`), la tasa de aprendizaje (`lr`), y las funciones de activación para cada capa (`activation_types`). Primero verifica que la cantidad de capas coincida con la cantidad de funciones de activación. Luego, recorre cada capa, construyendo objetos `Layer` con el tamaño correspondiente (entradas y salidas) y su función de activación asociada. TAmbién se recibe la función de actualización de pesos que puede ser entre RMSProp, Adam y SGD. Este proceso establece la estructura completa de la red, desde las entradas hasta la última capa, lista para el entrenamiento.
+Este constructor crea e inicializa una red neuronal multicapa (MLP), configurando su arquitectura, tipo de optimizador, y técnicas adicionales de regularización como L2 y Dropout. Recibe como parámetros el número de entradas (`n_inputs`), una lista con el tamaño de cada capa oculta (`layer_sizes`), el número de salidas (`n_outputs`), la tasa de aprendizaje (`lr`), las funciones de activación para cada capa (`activation_types`), el tipo de optimizador (`opt`), un indicador para usar regularización L2 (`regularizer`) y otro para habilitar Dropout (`dropout`).
+
+Primero, el constructor verifica que el número de capas ocultas coincida con la cantidad de funciones de activación proporcionadas. Luego, construye las capas de la red (`Layer`) una por una, conectándolas secuencialmente. Después se inicializa el optimizador seleccionado, que puede ser RMSProp, Adam o SGD.
+
+Si se activa la regularización, se crea un objeto `L2Regularizer` con un valor por defecto (0.01) y se asigna al optimizador. Si se habilita `Dropout`, se inicializa un controlador con una tasa predefinida (0.5), que puede usarse durante el entrenamiento para apagar aleatoriamente ciertas neuronas y reducir el sobreajuste.
 
 ```cpp
-Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
-         double lr, std::vector<ActivationType> activation_types,  optimizer_type opt = optimizer_type::SGD)
+Mlp::Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
+         double lr, std::vector<ActivationType> activation_types, optimizer_type opt,
+         bool regularizer, bool dropout)
     : n_inputs(n_inputs), n_outputs(n_outputs), learning_rate(lr)
 {
     if (layer_sizes.size() != activation_types.size())
@@ -346,29 +409,51 @@ Mlp(int n_inputs, const std::vector<int> &layer_sizes, int n_outputs,
         layers.emplace_back(prev_size, layer_sizes[i], activation_types[i]);
         prev_size = layer_sizes[i];
     }
+
     if (opt == optimizer_type::RMSPROP)
         this->optimizer = std::make_shared<RMSProp>();
     else if (opt == optimizer_type::ADAM)
         this->optimizer = std::make_shared<Adam>();
     else
         this->optimizer = std::make_shared<SGD>();
+
+    if (regularizer)
+    {
+        double l2_penalty = 0.01;
+        this->regularizer = std::make_shared<L2Regularizer>(l2_penalty);
+        this->optimizer->set_regularizer(this->regularizer);
+        std::cout << "Using L2 regularization: " << l2_penalty << ".\n";
+    }
+
+    if (dropout)
+    {
+        double dropout_rate = 0.5;
+        this->dropout = std::make_shared<DropoutController>(0.5);
+        std::cout << "Using dropout: " << dropout_rate << ".\n";
+    }
 }
 ```
 
 #### `forward`
 
-La función `forward` implementa la propagación hacia adelante en la red neuronal, calculando las salidas capa por capa a partir de una entrada dada. Comienza limpiando el vector de activaciones y almacenando la entrada original como la primera activación. Luego, para cada capa en la red, se crea un vector de salida del tamaño adecuado y se calcula la salida de la capa usando la función `linear_forward`, que aplica los pesos, el sesgo y la función de activación correspondiente. Cada resultado se añade a la lista de activaciones, permitiendo conservar el estado completo de la red en cada paso, lo cual es fundamental para el posterior proceso de retropropagación (`backward`).
+La función `forward` realiza la propagación hacia adelante en la red neuronal, calculando las salidas capa por capa a partir de una entrada. Comienza limpiando el vector de activaciones y almacenando la entrada original como la primera activación. Luego, para cada capa, se calcula la salida lineal con `linear_forward` y se aplica la función de activación correspondiente mediante `apply_activation`.
+
+Si está habilitado el mecanismo de _dropout_ (`dropout != nullptr`) y se está en modo entrenamiento (`train == true`), se aplica _dropout_ a las salidas de las capas ocultas (no a la de salida), desconectando aleatoriamente algunas neuronas para reducir el sobreajuste. Finalmente, cada vector de salida se almacena en la lista de activaciones, que contiene el estado completo de la red tras la propagación.
 
 ```cpp
-void forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations)
+void Mlp::forward(const std::vector<double> &input, std::vector<std::vector<double>> &activations, bool train)
 {
     activations.clear();
     activations.push_back(input);
 
-    for (auto &layer : layers)
+    for (size_t i = 0; i < layers.size(); ++i)
     {
+        auto &layer = layers[i];
         std::vector<double> output(layer.get_output_size());
         layer.linear_forward(activations.back(), output);
+        layer.apply_activation(output);
+        if (dropout && train && i < layers.size() - 1)
+            dropout->apply(output);
         activations.push_back(output);
     }
 }
@@ -415,7 +500,6 @@ void backward(const std::vector<double> &input,
         exit(1);
     }
 
-    // Actualización de pesos y biases
     for (size_t l = 0; l < layers.size(); ++l)
         layers[l].apply_update(this->optimizer, deltas[l], activations[l], learning_rate, l);
 }
@@ -450,11 +534,13 @@ double cross_entropy_loss(const std::vector<double> &predicted, const std::vecto
 
 #### `train`
 
-Entrena la red usando un conjunto de imágenes y etiquetas realizando un pase completo para cada muestra: primero convierte la etiqueta a vector one-hot, luego ejecuta la propagación hacia adelante para obtener la predicción, calcula la pérdida con entropía cruzada y aplica la retropropagación para ajustar los pesos. Además, acumula la pérdida total y cuenta las predicciones correctas para actualizar la pérdida promedio y la precisión de entrenamiento al finalizar el ciclo.
+Entrena la red neuronal utilizando un conjunto de imágenes y sus respectivas etiquetas. Para cada muestra, el método realiza un pase hacia adelante con activación y _dropout_ (si está habilitado), calcula la pérdida usando entropía cruzada, y luego realiza retropropagación para ajustar los pesos.
+
+Durante el entrenamiento, se acumulan tanto la pérdida total como el número de predicciones correctas. Si hay regularización activada (por ejemplo, L2), se calcula la penalización asociada a los pesos de la red y se añade al total de pérdida. Al final del ciclo, se actualiza la pérdida promedio (`average_loss`) y la precisión de entrenamiento (`train_accuracy`).
 
 ```cpp
-void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
-        double &average_loss, double &train_accuracy)
+void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+                double &average_loss, double &train_accuracy)
 {
     size_t n = images.size();
     std::vector<size_t> indices(n);
@@ -464,6 +550,7 @@ void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
     std::vector<double> target(n_outputs);
     std::vector<std::vector<double>> activations;
     double total_loss = 0.0;
+    double penalty = 0.0;
     int correct = 0;
 
     for (size_t k = 0; k < n; ++k)
@@ -472,34 +559,39 @@ void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
         const auto &input = images[i];
         int label = labels[i];
         one_hot_encode(label, target);
-        forward(input, activations);
-
+        forward(input, activations, true);
         total_loss += cross_entropy_loss(activations.back(), target);
         backward(input, activations, target);
 
-        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        int pred = std::distance(activations.back().begin(),
+                                 std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == label)
             ++correct;
     }
-    average_loss = total_loss / n;
+    if (regularizer)
+        penalty = regularizer->compute_penalty(layers);
+    average_loss = (total_loss + penalty) / n;
     train_accuracy = 100.0 * correct / n;
 }
 ```
 
 #### `test`
 
-Evalúa la red sobre un conjunto de datos de prueba sin modificar los pesos, realizando una propagación hacia adelante para cada muestra y calculando la precisión como el porcentaje de predicciones correctas respecto a las etiquetas reales.
+Evalúa el desempeño de la red neuronal sobre un conjunto de datos sin alterar los pesos del modelo. Para cada muestra, realiza una propagación hacia adelante con `train = false`, lo cual asegura que no se aplique _dropout_ u otras técnicas específicas del entrenamiento. Luego compara la predicción con la etiqueta real y contabiliza los aciertos.
+
+Al finalizar, calcula la precisión (`test_accuracy`) como el porcentaje de predicciones correctas sobre el total de muestras evaluadas.
 
 ```cpp
-void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy)
+void Mlp::test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy)
 {
     int correct = 0;
     std::vector<std::vector<double>> activations;
 
     for (size_t i = 0; i < images.size(); ++i)
     {
-        forward(images[i], activations);
-        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        forward(images[i], activations, false);
+        int pred = std::distance(activations.back().begin(),
+                                 std::max_element(activations.back().begin(), activations.back().end()));
         if (pred == labels[i])
             ++correct;
     }
@@ -1192,23 +1284,34 @@ enum class optimizer_type
 
 #### Clase base `Optimizer`
 
-La clase abstracta `Optimizer` declara una interfaz para actualizar pesos y bias con un método virtual puro `update`. También expone un método para obtener el tipo del optimizador. Esto permite que distintas implementaciones específicas (SGD, Adam, RMSProp) se usen de forma polimórfica, facilitando la extensibilidad.
+La clase abstracta `Optimizer` define la interfaz general para los algoritmos de optimización que actualizan los pesos y el sesgo de una neurona durante el entrenamiento. Incluye el método virtual puro `update`, que debe ser implementado por todas las clases derivadas (como `SGD`, `Adam`, o `RMSProp`), permitiendo actualizar los parámetros en función del gradiente y el tipo de optimizador.
+
+Además, esta versión incorpora un mecanismo opcional de regularización L2 mediante un puntero a un objeto `Regularizer`. El método `set_regularizer` permite establecer esta instancia desde fuera de la clase, proporcionando flexibilidad para aplicar penalizaciones sobre los pesos durante la actualización. El método `get_type` devuelve el tipo del optimizador, facilitando la identificación y la lógica dependiente del tipo.
 
 ```cpp
 class Optimizer
 {
+protected:
+    std::shared_ptr<Regularizer> regularizer = nullptr;
+
 public:
     virtual void update(double learning_rate, std::vector<double> &weights, double &bias,
                         const double *input, double delta,
                         int input_size, int neuron_index) = 0;
+
     virtual optimizer_type get_type() const = 0;
+    void set_regularizer(std::shared_ptr<Regularizer> reg)
+    {
+        this->regularizer = reg;
+    }
+
     virtual ~Optimizer() = default;
 };
 ```
 
 #### Clase `SGD` (Descenso de Gradiente Estocástico)
 
-SGD es la forma más simple de optimización, actualiza los pesos restando el gradiente multiplicado por la tasa de aprendizaje. La fórmula es:
+`SGD` implementa el algoritmo de descenso de gradiente estocástico, que actualiza cada peso restando el gradiente del error multiplicado por la tasa de aprendizaje. En esta versión, se incluye soporte para regularización L2, sumando una penalización proporcional al valor del peso antes de aplicar la actualización.
 
 ![](.docs/f3.png)
 
@@ -1220,18 +1323,26 @@ public:
                 const double *input, double delta,
                 int input_size, int) override
     {
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
+
         for (int j = 0; j < input_size; ++j)
-            weights[j] -= learning_rate * delta * input[j];
+        {
+            double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];  // Aplicar penalización L2
+            weights[j] -= learning_rate * grad;
+        }
+
         bias -= learning_rate * delta;
     }
+
     optimizer_type get_type() const override { return optimizer_type::SGD; }
 };
 ```
 
 #### Clase `RMSProp`
 
-RMSProp mejora a SGD adaptando la tasa de aprendizaje para cada peso según la media móvil de los cuadrados de gradientes.
-Fórmulas:
+`RMSProp` (Root Mean Square Propagation) mejora a SGD adaptando de forma individual la tasa de aprendizaje de cada peso utilizando una media móvil de los cuadrados de los gradientes. Esto permite que pesos con gradientes grandes se actualicen más lentamente, estabilizando el entrenamiento. Además, esta versión incorpora soporte opcional para regularización L2.
 
 ![](.docs/f4.png)
 
@@ -1257,9 +1368,14 @@ public:
         if (r_weights.size() != static_cast<size_t>(input_size))
             r_weights.assign(input_size, 0.0);
 
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
+
         for (int j = 0; j < input_size; ++j)
         {
             double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];  // Regularización L2
+
             r_weights[j] = tau * r_weights[j] + (1.0 - tau) * (grad * grad);
             weights[j] -= learning_rate * grad / (std::sqrt(r_weights[j]) + epsilon);
         }
@@ -1268,14 +1384,19 @@ public:
         r_bias = tau * r_bias + (1.0 - tau) * (grad_b * grad_b);
         bias -= learning_rate * grad_b / (std::sqrt(r_bias) + epsilon);
     }
+
     optimizer_type get_type() const override { return optimizer_type::RMSPROP; }
 };
 ```
 
 #### Clase `Adam`
 
-Adam combina RMSProp y momentum adaptativo, manteniendo dos momentos: el primero (media móvil de gradientes) y segundo (media móvil de gradientes al cuadrado). Se aplican correcciones de sesgo para compensar valores iniciales.
-Fórmulas clave:
+`Adam` (Adaptive Moment Estimation) combina las ventajas de **RMSProp** y **momentum**, manteniendo dos momentos:
+
+- el primero: la media móvil de los gradientes (acelera),
+- el segundo: la media móvil de los gradientes al cuadrado (normaliza la escala).
+
+Además, se aplican correcciones de sesgo para compensar la inicialización en cero de los momentos. Esta implementación también soporta regularización L2 opcional, lo que permite un control adicional sobre el sobreajuste.
 
 ![](.docs/f5.png)
 
@@ -1289,7 +1410,6 @@ private:
     std::unordered_map<int, std::vector<double>> m_w, v_w;
     std::unordered_map<int, double> m_b, v_b;
     std::unordered_map<int, int> timestep;
-
     std::unordered_map<int, double> beta1_pow_t;
     std::unordered_map<int, double> beta2_pow_t;
 
@@ -1325,10 +1445,13 @@ public:
 
         double correction1 = 1.0 / (1.0 - b1_pow);
         double correction2 = 1.0 / (1.0 - b2_pow);
+        double lambda = (this->regularizer ? this->regularizer->lambda_value() : 0.0);
 
         for (int j = 0; j < input_size; ++j)
         {
             double grad = delta * input[j];
+            if (lambda > 0.0)
+                grad += lambda * weights[j];  // regularización L2
 
             m_weights[j] = beta1 * m_weights[j] + (1.0 - beta1) * grad;
             v_weights[j] = beta2 * v_weights[j] + (1.0 - beta2) * grad * grad;
@@ -1348,6 +1471,7 @@ public:
 
         bias -= learning_rate * m_hat_b / (std::sqrt(v_hat_b) + epsilon);
     }
+
     optimizer_type get_type() const override { return optimizer_type::ADAM; }
 };
 ```
@@ -1378,6 +1502,180 @@ inline optimizer_type from_string_opt(const std::string &str)
     auto it = string_to_opt.find(str);
     return it != string_to_opt.end() ? it->second : optimizer_type::SGD;
 }
+```
+
+---
+
+### Clase `DropoutController`
+
+Implementa la técnica de **dropout**, un método de regularización que evita el sobreajuste en redes neuronales. Durante el entrenamiento, la clase desactiva aleatoriamente un subconjunto de neuronas (poniendo su activación en cero) con una probabilidad dada por `dropout_rate`.
+Para mantener la escala de activaciones consistente, también incluye funciones para escalar las activaciones durante la inferencia (evaluación o prueba).
+
+```cpp
+class DropoutController
+{
+private:
+    double dropout_rate;
+    mutable std::mt19937 rng;
+    mutable std::uniform_real_distribution<double> dist;
+}
+```
+
+#### `DropoutController(double rate)`
+
+Constructor explícito que inicializa el controlador de dropout con un `rate` (valor entre 0 y 1), que indica la probabilidad con la que se "apagan" las neuronas durante el entrenamiento.
+
+Internamente, también inicializa:
+
+- Un generador de números aleatorios `rng` (con semilla aleatoria),
+- Una distribución uniforme continua entre 0 y 1 para tomar decisiones de apagado.
+
+```cpp
+explicit DropoutController(double rate)
+    : dropout_rate(rate), rng(std::random_device{}()), dist(0.0, 1.0) {}
+```
+
+#### `apply`
+
+Aplica dropout **durante el entrenamiento**:
+
+- Para cada valor de activación, genera un número aleatorio.
+- Si el número es menor que `dropout_rate`, apaga (pone a cero) la neurona.
+- Si no se apaga, **se escala la activación restante** por
+
+![](.docs/f6.png)
+
+para mantener la media constante.
+
+Esto ayuda a prevenir que las neuronas dependan excesivamente unas de otras (co-adaptación).
+
+```cpp
+void apply(std::vector<double> &activations) const
+{
+    for (double &val : activations)
+    {
+        if (dist(rng) < dropout_rate)
+            val = 0.0;
+        else
+            val *= (1.0 / (1.0 - dropout_rate));
+    }
+}
+```
+
+#### `scale_for_inference`
+
+Escala todas las activaciones por $1 - \text{dropout\_rate}$ **durante la inferencia**, para compensar el hecho de que no se está aplicando apagado real.
+Este paso es necesario si **no se escaló** durante el entrenamiento (es el caso inverso al anterior). Pero dado que tu `apply()` ya escala durante entrenamiento, este método es opcional y se puede omitir dependiendo del enfoque adoptado.
+
+```cpp
+void scale_for_inference(std::vector<double> &activations) const
+{
+    for (double &val : activations)
+        val *= (1.0 - dropout_rate);
+}
+```
+
+#### `rate()`
+
+Retorna la tasa de dropout (`dropout_rate`) configurada en la clase. Útil si deseas consultarla desde otras clases o funciones de entrenamiento.
+
+```cpp
+double rate() const { return dropout_rate; }
+```
+
+---
+
+### Clase `Regularizer`
+
+La clase abstracta `Regularizer` define la interfaz para los regularizadores, mecanismos que penalizan los modelos complejos agregando un término al costo para evitar el sobreajuste.
+Este diseño permite implementar distintas estrategias como **L1**, **L2** u otras variantes de regularización.
+
+Permite dos operaciones clave:
+
+- Calcular la penalización total dada una red (`compute_penalty`).
+- Aplicar ajustes a los gradientes de los pesos (`apply`).
+
+```cpp
+class Regularizer
+{
+public:
+    virtual double compute_penalty(const std::vector<Layer> &layers) const = 0;
+    virtual void apply(std::vector<double> &weights, std::vector<double> &grad_weights) const = 0;
+    virtual ~Regularizer() = default;
+    virtual double lambda_value() const { return 0.0; }
+};
+```
+
+#### Clase `L2Regularizer`
+
+`L2Regularizer` implementa la regularización **L2** (también conocida como weight decay), que penaliza los pesos grandes sumando
+
+![](.docs/f7.png)
+
+al error.
+Esto incentiva que los pesos se mantengan pequeños y distribuidos.
+
+```cpp
+class L2Regularizer : public Regularizer
+{
+private:
+    double lambda;
+
+public:
+    explicit L2Regularizer(double lambda) : lambda(lambda) {}
+    double compute_penalty(const std::vector<Layer> &layers) const override;
+    void apply(std::vector<double> &weights, std::vector<double> &grad_weights) const override;
+    double lambda_value() const;
+};
+```
+
+##### `L2Regularizer`
+
+Constructor que inicializa el regularizador con el valor lambda, que controla la fuerza de la penalización.
+
+```cpp
+explicit L2Regularizer(double lambda) : lambda(lambda) {}
+```
+
+##### `compute_penalty`
+
+Itera sobre todas las capas y acumula la suma de los cuadrados de los pesos, delegando el cálculo parcial a `Layer::compute_penalty`.
+Finalmente, devuelve
+
+![](.docs/f8.png)
+
+, como lo requiere la formulación estándar de L2.
+
+```cpp
+double L2Regularizer::compute_penalty(const std::vector<Layer> &layers) const
+{
+    double penalty = 0.0;
+    for (const auto &layer : layers)
+        layer.compute_penalty(penalty);
+    return 0.5 * lambda * penalty;
+}
+```
+
+##### `apply`
+
+Ajusta cada gradiente de peso sumando
+
+![](.docs/f9.png)
+
+```cpp
+void L2Regularizer::apply(std::vector<double> &weights, std::vector<double> &grad_weights) const
+{
+    for (size_t i = 0; i < weights.size(); ++i)
+        grad_weights[i] += lambda * weights[i];
+}
+```
+
+##### `lambda_value`
+
+Devuelve el valor lambda actual del regularizador.
+
+```cpp
+double lambda_value() const { return lambda; }
 ```
 
 ---
@@ -1704,25 +2002,146 @@ python graphic.py
 
 ### Salida
 
-![Entrenamiento con SGD](.docs/sgd.png)
+#### **Base**
 
-![Entrenamiento con RMSprop](.docs/rms.png)
+- **SGD**: Entrenamiento base utilizando el optimizador SGD sin técnicas de regularización.
 
-![Entrenamiento con Adam](.docs/adam.png)
+![](.docs/SGD.png)
 
-![Entrenamiento Global](.docs/train_opt.png)
+- **RMSProp**: Entrenamiento base con el optimizador RMSProp sin dropout ni penalización L2.
 
-![Test Global](.docs/test_opt.png)
+![](.docs/RMS.png)
 
-![Test Externo](.docs/test_2.png)
+- **Adam**: Entrenamiento base con el optimizador Adam sin ningún tipo de regularización.
+
+![](.docs/ADAM.png)
+
+#### **Dropout**
+
+- **Adam + Dropout 0.2**: Entrenamiento con Adam aplicando dropout con tasa de 0.2.
+
+![](.docs/ADAM_DROP_02.png)
+
+- **Adam + Dropout 0.5**: Entrenamiento con Adam aplicando dropout con tasa de 0.5.
+
+![](.docs/ADAM_DROP_05.png)
+
+#### **L2 (Weight Decay)**
+
+- **Adam + L2 0.0001**: Entrenamiento con Adam utilizando regularización L2 con valor 0.0001.
+
+![](.docs/ADAM_L2_0001.png)
+
+- **Adam + L2 0.001**: Entrenamiento con Adam utilizando regularización L2 con valor 0.001.
+
+![](.docs/ADAM_L2_001.png)
+
+#### **Dropout + L2**
+
+- **Adam + Dropout 0.5 + L2 0.001**: Entrenamiento combinado con Adam aplicando dropout con tasa 0.5 y regularización L2 con valor 0.001.
+
+![](.docs/ADAM_DROP_05_L2_001.png)
+
+- **Adam + Dropout 0.2 + L2 0.0001**: Entrenamiento combinado con Adam aplicando dropout con tasa 0.2 y regularización L2 con valor 0.0001.
+
+![](.docs/ADAM_DROP_02_L2_0001.png)
+
+#### **Evaluación en Test Externo (fuera de MNIST)**
+
+- **Test Base**: Evaluación de la red entrenada sin regularización en un conjunto externo a MNIST.
+
+![](.docs/TEST_BASE.png)
+
+- **Test con Dropout**: Evaluación de la red entrenada con dropout (tasa 0.5 y 0.2) en un conjunto externo.
+
+![](.docs/TEST_DROP.png)
+
+- **Test con L2**: Evaluación de la red entrenada solo con regularización L2 (0.01 y 0.001) en un conjunto externo.
+
+![](.docs/TEST_L2.png)
+
+- **Test con Dropout + L2**: Evaluación de la red entrenada con dropout y regularización L2 en un conjunto externo.
+
+![](.docs/TEST_DROP_L2.png)
+
+## Tablas Comparativas
+
+### Base
+
+| Optimizador | Epoch | Train Acc (%) | Test Acc (%) | Comentario sobre Overfitting/Underfitting |
+| ----------- | ----- | ------------- | ------------ | ----------------------------------------- |
+| **Adam**    | 1     | 93.86         | 96.88        | Estable                                   |
+|             | 6     | 98.28         | 97.08        | Leve overfitting empieza                  |
+|             | 13    | 99.12         | 97.86        | Leve Overfitting                          |
+|             | 20    | 99.47         | 97.85        | Leve overfitting continúa                 |
+|             | 25    | 99.55         | 97.60        | Overfitting claro                         |
+| **RMSProp** | 1     | 93.92         | 95.88        | Estable                                   |
+|             | 6     | 98.11         | 97.19        | Overfitting                               |
+|             | 13    | 98.84         | 97.47        | Overfitting                               |
+|             | 20    | 99.29         | 97.55        | Overfitting visible                       |
+|             | 25    | 99.36         | 97.23        | Overfitting claro                         |
+| **SGD**     | 1     | 88.50         | 92.81        | Estable con posible Underfitting          |
+|             | 6     | 96.76         | 96.60        | Overfitting                               |
+|             | 13    | 98.34         | 97.54        | Overfitting                               |
+|             | 20    | 99.00         | 97.78        | Overfitting                               |
+|             | 25    | 99.32         | 97.73        | Muy claro overfitting                     |
+
+### ADAM con DROPOUT
+
+| Configuración          | Epoch | Train Acc (%) | Test Acc (%) | Comentario sobre Overfitting/Underfitting          |
+| ---------------------- | ----- | ------------- | ------------ | -------------------------------------------------- |
+| **Adam + Dropout 0.2** | 1     | 88.21         | 95.20        | Estable                                            |
+|                        | 5     | 92.87         | 96.40        | Test mejora más rápido que el train                |
+|                        | 13    | 93.32         | 96.66        | Buen ajuste                                        |
+|                        | 17    | 93.33         | 96.59        | Estable, sin overfitting notable                   |
+|                        | 24    | 93.19         | 95.77        | Test comienza a bajar, indicio de overfitting leve |
+|                        | 25    | 93.43         | 96.19        | Cierre estable, ligera variación test              |
+| **Adam + Dropout 0.5** | 1     | 88.26         | 94.91        | Estable                                            |
+|                        | 5     | 92.99         | 96.76        | Muy buen test, generaliza mejor que el train       |
+|                        | 11    | 93.73         | 96.61        | Test sigue alto, entrenamiento moderado            |
+|                        | 19    | 93.70         | 96.58        | Estabilidad buena, sin signos de sobreajuste       |
+|                        | 24    | 93.87         | 96.36        | Muy balanceado                                     |
+|                        | 25    | 93.75         | 96.53        | Mejor estabilidad general que Dropout 0.2          |
+
+### ADAM con L2
+
+| Configuración       | Epoch | Train Acc (%) | Test Acc (%) | Comentario sobre Overfitting/Underfitting        |
+| ------------------- | ----- | ------------- | ------------ | ------------------------------------------------ |
+| **Adam + L2 0.01**  | 1     | 88.37         | 91.35        | Test ligeramente mejor que el train, buen inicio |
+|                     | 5     | 90.31         | 91.78        | Curvas muy cercanas, sin signos de overfitting   |
+|                     | 13    | 90.39         | 87.67        | **Overfitting** notorio (Test cae abruptamente)  |
+|                     | 18    | 90.52         | 91.70        | Recuperación parcial del test                    |
+|                     | 25    | 90.54         | 91.02        | Generalización limitada, indicios de sobreajuste |
+| **Adam + L2 0.001** | 1     | 92.50         | 95.41        | **Overfitting** inicial leve (Test > Train)      |
+|                     | 5     | 95.15         | 94.95        | Muy cercano, sin sobreajuste                     |
+|                     | 13    | 95.22         | 95.37        | Buen equilibrio, generalización efectiva         |
+|                     | 18    | 95.18         | 93.96        | **Overfitting leve**, test comienza a bajar      |
+|                     | 25    | 95.11         | 95.24        | Estable, mejor generalización que con L2 0.01    |
+
+### ADAM con DROPOUT + L2
+
+| Configuración               | Epoch | Train Acc (%) | Test Acc (%) | Comentario sobre Overfitting/Underfitting                |
+| --------------------------- | ----- | ------------- | ------------ | -------------------------------------------------------- |
+| **Adam + Dropout + L2**     | 1     | 78.88         | 88.33        | Estable                                                  |
+|                             | 5     | 79.37         | 86.62        | Test mejora más rápido, pero aún inestable               |
+|                             | 10    | 79.17         | 88.36        | Test supera al train de forma sostenida                  |
+|                             | 15    | 79.12         | 86.70        | Variabilidad entre epochs, sin mejora clara              |
+|                             | 24    | 78.85         | 88.74        | **Underfitting leve**, Test sube pese a Train bajo       |
+|                             | 25    | 78.84         | 86.36        | Dispersión final, modelo no converge bien                |
+| **Adam + Dropout + L2 ALT** | 1     | 85.49         | 92.07        | Estable                                                  |
+|                             | 5     | 87.06         | 93.04        | Mejora constante en ambos, generalización buena          |
+|                             | 10    | 86.57         | 91.45        | Variación Test, posible ruido                            |
+|                             | 15    | 86.71         | 93.68        | Buen ajuste, test alto y estable                         |
+|                             | 24    | 86.21         | 93.73        | Test mejora incluso con caída de Train                   |
+|                             | 25    | 86.04         | 93.82        | **Test alto sostenido**, ligera tendencia a overfitting. |
 
 ## Conclusiones
 
-Los resultados obtenidos al comparar los tres optimizadores (Adam, RMSProp y SGD) evidencian claras diferencias tanto en precisión como en velocidad de entrenamiento. En términos de desempeño final, Adam fue el optimizador que alcanzó la mayor precisión sobre el conjunto de prueba, logrando un 97.97% tras 50 épocas. Aunque RMSProp y SGD también presentaron buenos resultados, con 97.62% y 96.6% respectivamente, Adam mostró una progresión más rápida hacia altos niveles de precisión, superando el 97% ya en la época 5, mientras que RMSProp y SGD necesitaron más de 10 épocas para acercarse a ese rango.
+Las variaciones introducidas con técnicas de regularización como Dropout y L2 muestran impactos claros sobre el comportamiento de overfitting y underfitting en el entrenamiento con Adam. En la configuración base, Adam presenta un sobreajuste progresivo desde épocas tempranas: ya desde la época 6, la precisión de entrenamiento supera significativamente a la de prueba, manteniéndose así hasta el final del entrenamiento. Esto refleja un modelo que aprende rápidamente los patrones del conjunto de entrenamiento, pero que comienza a memorizar más de lo deseado, limitando su capacidad de generalización.
 
-No obstante, el costo computacional de Adam fue notablemente mayor. Su tiempo promedio por época rondó los 192 segundos, en contraste con los aproximadamente 137 segundos de RMSProp y solo 62 segundos de SGD. Esto indica que aunque Adam proporciona una mejora en precisión, lo hace a expensas de mayor tiempo de cómputo. En aplicaciones donde el tiempo de entrenamiento es un factor crítico, esta diferencia puede ser significativa. En cambio, SGD fue consistentemente el más rápido, aunque sacrificando parte de la precisión final y mostrando una curva de aprendizaje más lenta.
+Cuando se introduce **Dropout**, tanto con probabilidad 0.2 como 0.5, el comportamiento del modelo cambia notablemente. Aunque las precisiones de entrenamiento disminuyen en comparación con la base, las de prueba se mantienen elevadas, y la brecha entre ambas se reduce considerablemente. Con Dropout 0.5, por ejemplo, el modelo logra una precisión de prueba superior al 96% de forma más estable, sin alcanzar valores extremos de entrenamiento. Esto indica un mejor balance, previniendo que el modelo se sobreentrene. En especial, el modelo con Dropout 0.5 muestra una curva de aprendizaje más controlada y sin signos de sobreajuste fuerte, lo cual sugiere que esta técnica ayuda a mantener la capacidad de generalización incluso al final del entrenamiento.
 
-Por lo tanto, no se observa un sobreajuste significativo en ninguno de los optimizadores, ya que las precisiones de entrenamiento y prueba convergen de forma estable. Aunque la precisión de entrenamiento alcanza valores cercanos al 99.8-99.9%, la precisión en prueba se mantiene alta, entre 97.4% y 97.9%, sin caídas que indiquen overfitting. Esto sugiere que los modelos están bien ajustados, aprovechando la capacidad de los optimizadores para generalizar sin memorizar ruido o patrones específicos del entrenamiento. Tampoco se detecta underfitting, dado que las pérdidas y precisiones reflejan un aprendizaje adecuado y un desempeño robusto en datos externos al MNIST estándar. Sin embargo, al evaluar con un dataset externo, se observa que RMS es el optimizador que menos logra captar, alcanzando un valor máximo alrededor del 35% en distintas fases del entrenamiento, en cambio SGD llega a ser el más alto con 42% en 10 epochs.
+Por otro lado, **la regularización L2** genera resultados más variados. Con un valor alto como 0.01, se observa un claro **underfitting**, con precisiones de entrenamiento estancadas cerca del 90% y una caída pronunciada en la precisión de prueba en la época 13. En cambio, con un valor más bajo (0.001), el modelo muestra mejor equilibrio, alcanzando un ajuste adecuado sin sobreentrenarse, aunque reaparece un leve overfitting hacia las últimas épocas. La combinación de **Dropout y L2** tiende a frenar aún más el entrenamiento: en la configuración básica (Dropout + L2), el modelo no logra converger bien, manteniendo una precisión de entrenamiento muy baja (≈78%), mientras que la de prueba varía significativamente, indicando **underfitting**. Sin embargo, al ajustar los hiperparámetros (Dropout + L2 ALT), se consigue un mejor balance, con un test sostenidamente alto a pesar de un entrenamiento moderado, aunque hacia el final aparece una ligera tendencia al overfitting por la divergencia entre curvas. En conjunto, estos resultados evidencian cómo la elección y ajuste de técnicas de regularización impactan directamente en el equilibrio entre aprendizaje y generalización del modelo.
 
 ## Author
 

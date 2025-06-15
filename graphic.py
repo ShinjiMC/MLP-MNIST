@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import re
 import os
 
+
 def cargar_train_test_logs(path):
     epochs = []
     train_losses = []
@@ -21,10 +22,17 @@ def cargar_train_test_logs(path):
                 test_accs.append(float(match.group(4)) / 100)
     return epochs, train_losses, train_accs, test_accs
 
+
 logs = {
     "ADAM": "./output/MNIST_ADAM_001/log.txt",
     "RMS": "./output/MNIST_RMS_001/log.txt",
-    "SGD": "./output/MNIST_SGD_001/log.txt"
+    "SGD": "./output/MNIST_SGD_001/log.txt",
+    "ADAM_DROPOUT_0.2": "./output/MNIST_ADAM_DROP_02/log.txt",
+    "ADAM_DROPOUT_0.5": "./output/MNIST_ADAM_DROP_05/log.txt",
+    "ADAM_L2_0.01": "./output/MNIST_ADAM_L2_001/log.txt",
+    "ADAM_L2_0.001": "./output/MNIST_ADAM_L2_0001/log.txt",
+    "ADAM_DROPOUT_0.5_L2_0.01": "./output/MNIST_ADAM_DROP_L2/log.txt",
+    "ADAM_DROPOUT_0.2_L2_0.001": "./output/MNIST_ADAM_DROP_L2_ALT/log.txt",
 }
 
 global_epochs = None
@@ -43,147 +51,132 @@ for name, path in logs.items():
     global_train_accs[name] = train_accs
     global_train_losses[name] = train_losses
 
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f"Entrenamiento y Evaluación - {name}")
+    # Crear figura con 2 filas y 1 columna
+    fig, axs = plt.subplots(2, 1, figsize=(12, 10))
+    fig.suptitle(f"Entrenamiento y Evaluación - {name}", fontsize=14)
 
-    # Gráfico 1: Entrenamiento
+    # Gráfico 1: Pérdida y Accuracy de entrenamiento
     axs[0].plot(epochs, train_losses, label="Loss", color="red", linewidth=2)
     axs[0].set_xlabel("Epochs")
     axs[0].set_ylabel("Loss", color="red")
     axs[0].tick_params(axis='y', labelcolor="red")
-    axs[0].set_title("Training Loss/Acc")
+    axs[0].set_title("Training Loss/Accuracy")
+    axs[0].set_ylim(0.0, 1.0)
     axs[0].grid(True)
 
     ax2 = axs[0].twinx()
-    ax2.plot(epochs, train_accs, label="Accuracy", color="blue", linestyle="--", linewidth=2)
+    ax2.plot(epochs, train_accs, label="Train Accuracy", color="blue", linestyle="--", linewidth=2)
     ax2.set_ylabel("Accuracy", color="blue")
     ax2.tick_params(axis='y', labelcolor="blue")
     ax2.set_ylim(0, 1.05)
 
-    # Gráfico 2: Test Accuracy
+    # Leyenda combinada para ambos ejes
+    lines, labels = axs[0].get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    axs[0].legend(lines + lines2, labels + labels2, loc="upper right")
+
+    # Gráfico 2: Accuracy de entrenamiento y prueba
+    min_acc = min(min(train_accs), min(test_accs))
+    max_acc = max(max(train_accs), max(test_accs))
+    margin = 0.02  # Margen adicional para el eje Y
+
+    axs[1].plot(epochs, train_accs, label="Train Accuracy", color="blue", linestyle="--", linewidth=2)
     axs[1].plot(epochs, test_accs, label="Test Accuracy", color="green", linewidth=2)
     axs[1].set_xlabel("Epochs")
-    axs[1].set_ylabel("Test Accuracy")
-    axs[1].set_title("Test Accuracy")
-    axs[1].set_ylim(0, 1.05)
+    axs[1].set_ylabel("Accuracy")
+    axs[1].set_title("Train/Test Accuracy")
+    axs[1].set_ylim(max(0, min_acc - margin), min(1, max_acc + margin))  # Ajuste dinámico de límites
     axs[1].grid(True)
+    axs[1].legend(loc="lower right")
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
-# Gráfico TRAIN global
-fig, ax1 = plt.subplots(figsize=(14, 8))
-ax2 = ax1.twinx()
 
-colors = {"SGD": "blue", "RMS": "red", "ADAM": "green"}
-
-for name in global_train_losses:
-    ax1.plot(global_epochs, global_train_losses[name], label=f"{name} Loss", linewidth=2, linestyle="-", color=colors[name])
-
-for name in global_train_accs:
-    ax2.plot(global_epochs, global_train_accs[name], label=f"{name} Accuracy", linewidth=2, linestyle="--", color=colors[name])
-
-ax1.set_xlabel("Epochs")
-ax1.set_ylabel("Loss")
-ax2.set_ylabel("Training Accuracy")
-ax1.grid(True)
-ax2.set_ylim(0, 1.05)
-
-# Combinar ambas leyendas automáticamente y mostrarlas en el gráfico
-lines1, labels1 = ax1.get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
-plt.legend(lines1 + lines2, labels1 + labels2, loc="best", fontsize="large")
-
-plt.title("Comparación Global de Training Loss y Accuracy")
-plt.tight_layout()
-plt.show()
-
-
-
-# Gráfico TEST global
-plt.figure(figsize=(14, 8))
-for name, accs in global_test_accs.items():
-    plt.plot(global_epochs, accs, label=f"{name}", linewidth=2)
-
-plt.title("Comparación Global de Test Accuracy")
-plt.xlabel("Epochs")
-plt.ylabel("Test Accuracy")
-plt.ylim(0.95, 1.001)
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-# Gráfico combinado: Train Accuracy vs Test Accuracy
-plt.figure(figsize=(14, 8))
-colors = {"SGD": "blue", "RMS": "red", "ADAM": "green"}
-
-for name in global_train_accs:
-    plt.plot(global_epochs, global_train_accs[name], label=f"{name} Train Accuracy",
-             linewidth=2, linestyle="--", color=colors[name])
-    
-for name in global_test_accs:
-    plt.plot(global_epochs, global_test_accs[name], label=f"{name} Test Accuracy",
-             linewidth=2, linestyle="-", color=colors[name])
-
-plt.title("Comparación Global de Accuracy: Entrenamiento vs Test")
-plt.xlabel("Epochs")
-plt.ylabel("Accuracy")
-plt.ylim(0.875, 1.001)  # Ajusta según tu rango real
-plt.grid(True)
-plt.legend(fontsize="large", loc="lower right")
-plt.tight_layout()
-plt.show()
-
-
-etiquetas = [
-    "ADAM - 50 epochs",
-    "ADAM - 40 epochs",
-    "ADAM - 30 epochs",
-    "ADAM - 20 epochs",
-    "ADAM - 10 epochs",
-    "RMS - 50 epochs",
-    "RMS - 40 epochs",
-    "RMS - 30 epochs",
-    "RMS - 20 epochs",
-    "RMS - 10 epochs",
-    "SGD - 50 epochs",
-    "SGD - 40 epochs",
-    "SGD - 30 epochs",
-    "SGD - 20 epochs",
-    "SGD - 10 epochs",
-]
-
-test_acc_values = [0.35, 0.35, 0.35, 0.275, 0.35, 
-                   0.225, 0.275, 0.25, 0.325, 0.275,
-                   0.35, 0.30, 0.35, 0.375, 0.425]
-def extraer_epochs(label):
-    return int(label.split('-')[1].strip().split()[0])
-data = {
-    "ADAM": [],
-    "RMS": [],
-    "SGD": []
+datos = {
+    "ADAM": {
+        50: 0.35,
+        40: 0.35,
+        30: 0.35,
+        20: 0.275,
+        10: 0.35
+    },
+    "RMS": {
+        50: 0.225,
+        40: 0.275,
+        30: 0.25,
+        20: 0.325,
+        10: 0.275
+    },
+    "SGD": {
+        50: 0.35,
+        40: 0.30,
+        30: 0.35,
+        20: 0.375,
+        10: 0.425
+    },
+    "ADAM_DROPOUT_0.2":{
+        10: 0.325,
+        13: 0.325,
+        20: 0.3,
+        25: 0.275
+    },
+    "ADAM_DROPOUT_0.5": {
+        5: 0.35,
+        10: 0.275,
+        20: 0.275,
+        25: 0.3
+    },
+    "ADAM_L2_0.01": {
+        7: 0.175,
+        10: 0.225,
+        20: 0.275,
+        25: 0.275
+    },
+    "ADAM_L2_0.001": {
+        10: 0.275,
+        14: 0.3,
+        20: 0.325,
+        25: 0.325
+    },
+    "ADAM_DROPOUT_0.5_L2_0.01": {
+        2: 0.175,
+        10: 0.15,
+        20: 0.15,
+        25: 0.25,        
+    },
+    "ADAM_DROPOUT_0.2_L2_0.001": {
+        10: 0.3,
+        20: 0.35,
+        25: 0.3 #best model
+    }
 }
-epochs_ordenados = sorted({extraer_epochs(e) for e in etiquetas if e.startswith("ADAM")}, reverse=True)
 
-for optim in data.keys():
-    filtered = [(extraer_epochs(e), val) for e, val in zip(etiquetas, test_acc_values) if e.startswith(optim)]
-    filtered.sort(key=lambda x: x[0], reverse=True)
-    data[optim] = [val for _, val in filtered]
+# Agrupación de configuraciones
+grupos = {
+    "Base": ["ADAM", "RMS", "SGD"],
+    "Dropout": [k for k in datos if "DROPOUT" in k and "L2" not in k],
+    "L2": [k for k in datos if "L2" in k and "DROPOUT" not in k],
+    "Dropout + L2": [k for k in datos if "DROPOUT" in k and "L2" in k]
+}
 
-plt.figure(figsize=(12, 6))
+colores_base = {"ADAM": "green", "RMS": "red", "SGD": "blue"}
 
-colores = {"ADAM": "green", "RMS": "red", "SGD": "blue"}
+for grupo, claves in grupos.items():
+    plt.figure(figsize=(10, 6))
+    
+    for clave in claves:
+        epochs = sorted(datos[clave].keys())
+        accs = [datos[clave][ep] for ep in epochs]
+        color = colores_base.get(clave, None)
+        plt.plot(epochs, accs, marker='o', linestyle='-', label=clave, color=color)
 
-for optim, valores in data.items():
-    plt.plot(epochs_ordenados, valores, marker='o', linestyle='-', color=colores[optim], label=optim)
-
-plt.xticks(epochs_ordenados, [f"{e} epochs" for e in epochs_ordenados], fontsize=10)
-plt.ylim(0, 1.0)
-plt.ylabel("External Test Accuracy")
-plt.xlabel("Epochs")
-plt.title("Comparación de Test Accuracy según configuración de entrenamiento")
-plt.grid(True)
-plt.legend(title="Optimizador")
-plt.tight_layout()
-plt.show()
+    plt.title(f"{grupo} - Test Accuracy por Epoch")
+    plt.xticks(sorted({ep for k in claves for ep in datos[k]}), rotation=45)
+    plt.ylim(0, 0.5)
+    plt.xlabel("Epochs")
+    plt.ylabel("Test Accuracy")
+    plt.grid(True)
+    plt.legend(fontsize=9)
+    plt.tight_layout()
+    plt.show()
