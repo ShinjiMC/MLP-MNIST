@@ -26,3 +26,8 @@ add_executable(mlp_test
      src/config.cpp
      src/regularizer.cpp
 )
+
+add_executable(conv2d
+     main_conv2d.cpp
+     src/conv2d.cpp
+)
