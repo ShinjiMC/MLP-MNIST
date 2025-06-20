@@ -20,9 +20,7 @@ void Conv2D::initialize_filters()
     filters.resize(out_channels, std::vector<std::vector<std::vector<double>>>(
                                      in_channels, std::vector<std::vector<double>>(
                                                       kernel_h, std::vector<double>(kernel_w))));
-
     biases.resize(out_channels, 0.0);
-
     for (int oc = 0; oc < out_channels; ++oc)
     {
         for (int ic = 0; ic < in_channels; ++ic)
@@ -92,7 +90,6 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
     int out_h = grad_output[0].size();
     int out_w = grad_output[0][0].size();
 
-    // Inicializar gradientes
     d_filters.assign(out_channels,
                      std::vector<std::vector<std::vector<double>>>(in_channels,
                                                                    std::vector<std::vector<double>>(kernel_h,
@@ -100,7 +97,6 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
     d_biases.assign(out_channels, 0.0);
     std::vector<std::vector<std::vector<double>>> grad_input(in_channels,
                                                              std::vector<std::vector<double>>(in_h, std::vector<double>(in_w, 0.0)));
-    // Calcular gradientes
     for (int oc = 0; oc < out_channels; ++oc)
         for (int i = 0; i < out_h; ++i)
             for (int j = 0; j < out_w; ++j)
@@ -117,8 +113,6 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
                             grad_input[ic][xi][xj] += filters[oc][ic][ki][kj] * grad;
                         }
             }
-
-    // Eliminar padding del grad_input si se usó
     if (padding > 0)
     {
         std::vector<std::vector<std::vector<double>>> unpadded(in_channels,
@@ -128,9 +122,7 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
             for (int i = 0; i < in_h - 2 * padding; ++i)
                 for (int j = 0; j < in_w - 2 * padding; ++j)
                     unpadded[c][i][j] = grad_input[c][i + padding][j + padding];
-
         return unpadded;
     }
-
     return grad_input;
 }

@@ -71,12 +71,12 @@ void save_images_to_txt(
 int main()
 {
     const int height = 28, width = 28;
-    auto images = load_images_from_txt("./input.txt", 6, 3, height, width);
+    auto images = load_images_from_txt("./output/input.txt", 6, 3, height, width);
     std::cout << "Loaded image of size " << images[0].size() << "x" << images[0][0].size() << "x" << images[0][0][0].size() << "\n";
     Conv2D conv(3, 2, 3, 3, 1, 1); // in_channels=3, out_channels=2, kernel=3x3, stride=1, padding=1
     auto image_processed = images;
     for (size_t i = 0; i < image_processed.size(); ++i)
         image_processed[i] = conv.forward(images[i]);
-    save_images_to_txt("./output_conv.txt", image_processed);
+    save_images_to_txt("./output/output_conv.txt", image_processed);
     return 0;
 }

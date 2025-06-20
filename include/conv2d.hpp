@@ -31,7 +31,7 @@ public:
     Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
            int stride = 1, int padding = 0);
 
-    // Entrada: tensor 3D [channels][height][width]
+    // Entrada: tensor XD [channels][height][width]
     std::vector<std::vector<std::vector<double>>> forward(
         const std::vector<std::vector<std::vector<double>>> &input);
 

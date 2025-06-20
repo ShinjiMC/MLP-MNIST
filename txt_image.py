@@ -31,4 +31,4 @@ def load_conv_output_to_images(txt_file, channels, height, output_root="img_conv
     print(f"Completed saving images from conv output to {output_root}.")
 
 # Si el conv2d output fue de tamaño [2 x 28 x 28]:
-load_conv_output_to_images("output_conv.txt", channels=2, height=28, output_root="output_img")
+load_conv_output_to_images("./output/output_conv.txt", channels=2, height=28, output_root="output_img")
