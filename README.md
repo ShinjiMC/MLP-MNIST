@@ -471,17 +471,41 @@ def load_conv_output_to_images(txt_file, channels, height, output_root="img_conv
 
 ## Ejecución
 
+Para ejecutar todo el flujo, se siguen los siguientes pasos en la terminal:
+
+```bash
 make run
+```
 
 ![](.docs/make.png)
 
+Este comando compila el proyecto y crea el ejecutable `conv2d`.
+
+Luego, se convierten las imágenes en texto con:
+
+```bash
 python image_txt.py
+```
 
+Esto genera un archivo `input.txt` con los valores normalizados de las imágenes de entrada.
+
+A continuación, se ejecuta el programa C++ que realiza la convolución:
+
+```bash
 ./build/conv2d
+```
 
+Este proceso carga las imágenes, aplica los filtros y guarda la salida en `output_conv.txt`.
+
+Finalmente, se reconstruyen las imágenes a partir de la salida con:
+
+```bash
 python txt_image.py
+```
 
 ![](.docs/exec.png)
+
+Este último paso guarda los resultados por carpeta, separando los canales y generando imágenes que muestran la salida de la convolución.
 
 ---
 
