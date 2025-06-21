@@ -11,7 +11,7 @@ std::vector<std::vector<std::vector<std::vector<double>>>> load_images_from_txt(
     std::ifstream file(path_txt);
     if (!file.is_open())
         throw std::runtime_error("Cannot open file: " + path_txt);
-    std::vector<std::vector<std::vector<std::vector<double>>>> images; // [N][C][H][W]
+    std::vector<std::vector<std::vector<std::vector<double>>>> images;
     std::string line;
     int line_count = 0;
     std::vector<std::vector<std::vector<double>>> current_image(
