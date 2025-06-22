@@ -1,5 +1,6 @@
 #pragma once
 #include <random>
+#include <omp.h>
 #include "neuron.hpp"
 #include "activation.hpp"
 #include <memory>
@@ -11,6 +12,9 @@ private:
     std::vector<Neuron> neurons;
     ActivationType activation;
 
+    std::vector<std::vector<double>> weights; // [output_size][input_size]
+    std::vector<double> biases;               // [output_size]
+
 public:
     Layer(int in_size, int out_size, ActivationType act)
         : input_size(in_size), output_size(out_size), activation(act)
@@ -20,13 +24,21 @@ public:
         double limit = std::sqrt(6.0 / (input_size + output_size));
         std::uniform_real_distribution<> dis(-limit, limit);
 
+        // for (int i = 0; i < output_size; ++i)
+        //     neurons.emplace_back(input_size, gen, dis);
+        weights.resize(output_size, std::vector<double>(input_size));
+        biases.resize(output_size, 0.0);
+
         for (int i = 0; i < output_size; ++i)
-            neurons.emplace_back(input_size, gen, dis);
+            for (int j = 0; j < input_size; ++j)
+                weights[i][j] = dis(gen);
     }
     Layer(int in_size, int out_size, ActivationType act, bool true_random)
         : input_size(in_size), output_size(out_size), activation(act)
     {
-        neurons.resize(output_size, Neuron());
+        // neurons.resize(output_size, Neuron());
+        weights.resize(output_size, std::vector<double>(input_size));
+        biases.resize(output_size, 0.0);
     }
     void linear_forward(const std::vector<double> &input, std::vector<double> &output) const;
     void apply_activation(std::vector<double> &output) const;
@@ -45,9 +57,10 @@ public:
     const int get_neurons_size() const { return neurons.size(); }
     void save(std::ostream &out, const int i) const;
     void load(std::istream &in);
-    void compute_penalty(double &penalty) const
+    void compute_penalty(double &penalty) const;
+    // Devuelve el peso entre la neurona `output_idx` y entrada `input_idx`
+    double get_weight(int output_idx, int input_idx) const
     {
-        for (const auto &neuron : neurons)
-            neuron.compute_penalty(penalty);
+        return weights[output_idx][input_idx];
     }
 };

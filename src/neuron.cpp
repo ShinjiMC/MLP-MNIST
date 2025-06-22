@@ -24,3 +24,11 @@ void Neuron::update(std::shared_ptr<Optimizer> opt, double learning_rate,
     opt->update(learning_rate, weights, bias,
                 input, delta, input_size, global_id);
 }
+
+double Neuron::forward(const std::vector<double> &input) const
+{
+    double sum = bias;
+    for (size_t i = 0; i < input.size(); ++i)
+        sum += input[i] * weights[i];
+    return sum;
+}

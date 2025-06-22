@@ -3,6 +3,7 @@
 #include <ctime>
 #include <iostream>
 #include <fstream>
+#include <chrono>
 #include <filesystem>
 #include "dropout.hpp"
 #include "optimizer.hpp"

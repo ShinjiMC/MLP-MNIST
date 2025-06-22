@@ -3,6 +3,10 @@ project(perceptron)
 
 set(CMAKE_CXX_STANDARD 17)
 
+# Agregar flags de optimización y OpenMP
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fopenmp")
+
 include_directories(include)
 
 # Ejecutable de entrenamiento

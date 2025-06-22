@@ -73,11 +73,15 @@ void Mlp::backward(const std::vector<double> &input,
                 deltas[l][i] = activations[l + 1][i] - expected[i];
         else
         {
+#pragma omp parallel for
             for (int i = 0; i < n_neurons; ++i)
             {
                 double error = 0.0;
-                for (int j = 0; j < layers[l + 1].get_output_size(); ++j)
-                    error += deltas[l + 1][j] * layers[l + 1].get_neurons()[j].get_weights()[i];
+                if (l + 1 < (int)layers.size())
+                {
+                    for (int j = 0; j < layers[l + 1].get_output_size(); ++j)
+                        error += deltas[l + 1][j] * layers[l + 1].get_weight(j, i);
+                }
                 if (layers[l].get_activation() == RELU)
                     deltas[l][i] = error * relu_derivative(activations[l + 1][i]);
                 else if (layers[l].get_activation() == SIGMOID)
@@ -167,19 +171,19 @@ void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector
     while (true)
     {
         // --- Entrenamiento ---
-        clock_t train_start = clock();
+        auto train_start = std::chrono::high_resolution_clock::now();
         train(train_images, train_labels, average_loss, train_accuracy);
-        clock_t train_end = clock();
-        double train_time = double(train_end - train_start) / CLOCKS_PER_SEC;
+        auto train_end = std::chrono::high_resolution_clock::now();
+        double train_time = std::chrono::duration<double>(train_end - train_start).count();
 
         // --- Evaluación en test (accuracy) ---
         double test_time = 0.0;
         if (Test)
         {
-            clock_t test_start = clock();
+            auto test_start = std::chrono::high_resolution_clock::now();
             test(test_images, test_labels, test_accuracy);
-            clock_t test_end = clock();
-            test_time = double(test_end - test_start) / CLOCKS_PER_SEC;
+            auto test_end = std::chrono::high_resolution_clock::now();
+            test_time = std::chrono::duration<double>(test_end - test_start).count();
         }
 
         std::ostringstream log_line;
