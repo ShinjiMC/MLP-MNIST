@@ -38,7 +38,7 @@ void Layer::apply_activation(std::vector<double> &output) const
 
 void Layer::save(std::ostream &out, const int i) const
 {
-    for (size_t j = 0; j < neurons.size(); ++j)
+    for (size_t j = 0; j < output_size; ++j)
     {
         out << i + 1 << " " << j + 1 << " ";
         for (int k = 0; k < input_size; ++k)
@@ -49,17 +49,24 @@ void Layer::save(std::ostream &out, const int i) const
 
 void Layer::load(std::istream &in)
 {
-    weights.resize(output_size, std::vector<double>(input_size));
-    biases.resize(output_size);
-    // neurons.resize(output_size);
     for (int j = 0; j < output_size; ++j)
     {
         int layer_idx, neuron_idx;
         in >> layer_idx >> neuron_idx;
-        // neurons[j].load(in, input_size);
+
+        if (in.fail())
+            throw std::runtime_error("Error al leer índice de neurona");
+
         for (int k = 0; k < input_size; ++k)
+        {
             in >> weights[j][k];
+            if (in.fail())
+                throw std::runtime_error("Error al leer peso");
+        }
+
         in >> biases[j];
+        if (in.fail())
+            throw std::runtime_error("Error al leer bias");
     }
 }
 
@@ -67,8 +74,6 @@ void Layer::apply_update(std::shared_ptr<Optimizer> optimizer, const std::vector
                          const std::vector<double> &input,
                          double learning_rate, int layer_index)
 {
-    // for (int i = 0; i < this->output_size; ++i)
-    //     neurons[i].update(optimizer, learning_rate, input.data(), delta[i], this->input_size, i, layer_index);
     for (int i = 0; i < output_size; ++i)
     {
         int global_id = layer_index * 100000 + i;
@@ -79,8 +84,6 @@ void Layer::apply_update(std::shared_ptr<Optimizer> optimizer, const std::vector
 
 void Layer::compute_penalty(double &penalty) const
 {
-    // for (const auto &neuron : neurons)
-    //     neuron.compute_penalty(penalty);
     for (const auto &row : weights)
         for (double w : row)
             penalty += w * w;

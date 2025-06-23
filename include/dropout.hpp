@@ -2,6 +2,7 @@
 #include <vector>
 #include <cstdlib>
 #include <random>
+#include <omp.h>
 
 class DropoutController
 {

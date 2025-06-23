@@ -231,8 +231,8 @@ void Mlp::save_data(const std::string &filename) const
 
     // Cabecera
     out << n_inputs << " ";
-    for (auto a : layers)
-        out << a.get_neurons_size() << " ";
+    for (const auto &layer : layers)
+        out << layer.get_output_size() << " ";
     out << "\n"
         << learning_rate << "\n";
 
@@ -320,7 +320,7 @@ void Mlp::test_info(const std::vector<std::vector<double>> &X_test, const std::v
         if (pred == y_test[i])
             ++correct;
 
-        std::cout << "Image " << i << " - Output: " << pred << " - Correct: " << y_test[i] << "\n";
+        // std::cout << "Image " << i << " - Output: " << pred << " - Correct: " << y_test[i] << "\n";
     }
 
     std::cout << "\nTotal: " << X_test.size() << "\n";
