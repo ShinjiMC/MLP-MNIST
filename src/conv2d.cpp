@@ -1,12 +1,13 @@
 #include "conv2d.hpp"
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 
 Conv2D::Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
-               int stride, int padding)
+               int stride, int padding, ActivationType activation_)
     : in_channels(in_channels), out_channels(out_channels),
       kernel_h(kernel_h), kernel_w(kernel_w),
-      stride(stride), padding(padding)
+      stride(stride), padding(padding), activation(activation_)
 {
     initialize_filters();
 }
@@ -15,20 +16,20 @@ void Conv2D::initialize_filters()
 {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<double> dis(-1.0, 1.0);
 
+    int fan_in = in_channels * kernel_h * kernel_w;
+    int fan_out = out_channels * kernel_h * kernel_w;
+    double limit = std::sqrt(6.0 / (fan_in + fan_out));
+    std::uniform_real_distribution<double> dis(0, limit);
     filters.resize(out_channels, std::vector<std::vector<std::vector<double>>>(
                                      in_channels, std::vector<std::vector<double>>(
                                                       kernel_h, std::vector<double>(kernel_w))));
     biases.resize(out_channels, 0.0);
     for (int oc = 0; oc < out_channels; ++oc)
-    {
         for (int ic = 0; ic < in_channels; ++ic)
             for (int i = 0; i < kernel_h; ++i)
                 for (int j = 0; j < kernel_w; ++j)
                     filters[oc][ic][i][j] = dis(gen);
-        biases[oc] = dis(gen);
-    }
 }
 
 std::vector<std::vector<std::vector<double>>> Conv2D::pad_input(
@@ -67,7 +68,6 @@ std::vector<std::vector<std::vector<double>>> Conv2D::forward(
                 for (int ic = 0; ic < in_channels; ++ic)
                 {
                     for (int ki = 0; ki < kernel_h; ++ki)
-
                         for (int kj = 0; kj < kernel_w; ++kj)
                         {
                             int xi = i * stride + ki;
@@ -75,6 +75,12 @@ std::vector<std::vector<std::vector<double>>> Conv2D::forward(
                             sum += padded[ic][xi][xj] * filters[oc][ic][ki][kj];
                         }
                 }
+                if (activation == RELU)
+                    sum = relu(sum);
+                else if (activation == SIGMOID)
+                    sum = sigmoid(sum);
+                else if (activation == TANH)
+                    sum = tanh_fn(sum);
                 output[oc][i][j] = sum;
             }
     return output;

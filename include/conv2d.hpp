@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <random>
+#include "activations.hpp"
 
 class Conv2D
 {
@@ -8,6 +9,7 @@ private:
     int in_channels, out_channels;
     int kernel_h, kernel_w;
     int stride, padding;
+    ActivationType activation;
 
     // Filtros: [out_channels][in_channels][kernel_h][kernel_w]
     std::vector<std::vector<std::vector<std::vector<double>>>> filters;
@@ -24,7 +26,7 @@ private:
 
 public:
     Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
-           int stride = 1, int padding = 0);
+           int stride = 1, int padding = 0, ActivationType activation = RELU);
     // Entrada: tensor XD [channels][height][width]
     std::vector<std::vector<std::vector<double>>> forward(
         const std::vector<std::vector<std::vector<double>>> &input);
