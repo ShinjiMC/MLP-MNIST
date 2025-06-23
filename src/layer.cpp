@@ -82,9 +82,17 @@ void Layer::apply_update(std::shared_ptr<Optimizer> optimizer, const std::vector
     }
 }
 
-void Layer::compute_penalty(double &penalty) const
+double Layer::compute_penalty() const
 {
-    for (const auto &row : weights)
-        for (double w : row)
-            penalty += w * w;
+    double sum = 0.0;
+    size_t rows = weights.size();
+    size_t cols = weights[0].size();
+#pragma omp parallel for reduction(+ : sum)
+    for (size_t idx = 0; idx < rows * cols; ++idx)
+    {
+        size_t i = idx / cols;
+        size_t j = idx % cols;
+        sum += weights[i][j] * weights[i][j];
+    }
+    return sum;
 }

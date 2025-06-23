@@ -58,7 +58,7 @@ public:
     const int get_neurons_size() const { return neurons.size(); }
     void save(std::ostream &out, const int i) const;
     void load(std::istream &in);
-    void compute_penalty(double &penalty) const;
+    double compute_penalty() const;
     // Devuelve el peso entre la neurona `output_idx` y entrada `input_idx`
     double get_weight(int output_idx, int input_idx) const
     {

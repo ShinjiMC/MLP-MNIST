@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
         std::cout << "Initializing new neural network...\n";
         nn = Mlp(n_inputs, cfg.get_layer_sizes(),
                  cfg.get_layer_sizes().back(), cfg.get_learning_rate(),
-                 cfg.get_activations(), cfg.get_optimizer(), false, false);
+                 cfg.get_activations(), cfg.get_optimizer(), true, true);
     }
 
     std::string dataset_name = get_last_folder(dataset_dir);

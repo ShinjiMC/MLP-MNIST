@@ -4,8 +4,8 @@
 double L2Regularizer::compute_penalty(const std::vector<Layer> &layers) const
 {
     double penalty = 0.0;
-    for (const auto &layer : layers)
-        layer.compute_penalty(penalty);
+    for (size_t i = 0; i < layers.size(); ++i)
+        penalty += layers[i].compute_penalty();
     return 0.5 * lambda * penalty;
 }
 

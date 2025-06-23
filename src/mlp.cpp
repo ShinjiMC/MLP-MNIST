@@ -103,7 +103,7 @@ void Mlp::backward(const std::vector<double> &input,
 }
 
 void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
-                double &average_loss, double &train_accuracy)
+                double &average_loss)
 {
     size_t n = images.size();
     std::vector<size_t> indices(n);
@@ -114,11 +114,9 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
     std::vector<std::vector<double>> activations;
     double total_loss = 0.0;
     double penalty = 0.0;
-    int correct = 0;
 
     for (size_t k = 0; k < n; ++k)
     {
-
         size_t i = indices[k];
         const auto &input = images[i];
         int label = labels[i];
@@ -126,14 +124,10 @@ void Mlp::train(std::vector<std::vector<double>> &images, std::vector<int> &labe
         forward(input, activations, true);
         total_loss += cross_entropy_loss(activations.back(), target);
         backward(input, activations, target);
-        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
-        if (pred == label)
-            ++correct;
     }
     if (regularizer)
         penalty = regularizer->compute_penalty(layers);
     average_loss = (total_loss + penalty) / n;
-    train_accuracy = 100.0 * correct / n;
 }
 
 void Mlp::test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy)
@@ -150,6 +144,21 @@ void Mlp::test(const std::vector<std::vector<double>> &images, const std::vector
     }
 
     test_accuracy = 100.0 * correct / images.size();
+}
+
+void Mlp::evaluate(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+                   double &train_accuracy)
+{
+    int correct = 0;
+    std::vector<std::vector<double>> activations;
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        forward(images[i], activations, false);
+        int pred = std::distance(activations.back().begin(), std::max_element(activations.back().begin(), activations.back().end()));
+        if (pred == labels[i])
+            ++correct;
+    }
+    train_accuracy = 100.0 * correct / images.size();
 }
 
 void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
@@ -172,10 +181,10 @@ void Mlp::train_test(std::vector<std::vector<double>> &train_images, std::vector
     {
         // --- Entrenamiento ---
         auto train_start = std::chrono::high_resolution_clock::now();
-        train(train_images, train_labels, average_loss, train_accuracy);
+        train(train_images, train_labels, average_loss);
         auto train_end = std::chrono::high_resolution_clock::now();
         double train_time = std::chrono::duration<double>(train_end - train_start).count();
-
+        evaluate(train_images, train_labels, train_accuracy);
         // --- Evaluación en test (accuracy) ---
         double test_time = 0.0;
         if (Test)
