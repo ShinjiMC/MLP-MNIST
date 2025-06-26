@@ -468,10 +468,6 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
 
 ---
 
-Aquí tienes la documentación detallada para la clase `Pooling`, siguiendo el estilo y formato del ejemplo de `Conv2D`:
-
----
-
 ### Clase `Pooling`
 
 La clase `Pooling` representa una capa de reducción espacial utilizada en redes neuronales convolucionales. Implementa el método `forward()` que aplica una operación de **submuestreo** (pooling) sobre regiones locales de una entrada tridimensional `[C][H][W]`. Soporta los tipos de pooling más comunes: **max**, **min** y **average**, con parámetros configurables como tamaño de ventana, `stride` y `padding`.
