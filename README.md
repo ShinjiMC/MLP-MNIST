@@ -1,4 +1,4 @@
-# Convolutional Neural Network - Convolutional
+# Convolutional Neural Network
 
 By Braulio Nayap Maldonado Casilla
 
@@ -6,7 +6,9 @@ By Braulio Nayap Maldonado Casilla
 
 La convolución es una operación matemática fundamental en el procesamiento de imágenes y en las redes neuronales convolucionales (CNN, por sus siglas en inglés). Esta operación permite extraer patrones locales de una entrada multidimensional, como bordes, texturas o estructuras complejas, mediante el uso de filtros o kernels que se deslizan sobre la imagen de entrada.
 
-En el contexto de las CNN, una convolución consiste en aplicar un conjunto de filtros sobre una entrada (típicamente una imagen con varios canales), generando como resultado una nueva representación llamada mapa de características (feature map). Cada filtro es un pequeño tensor de pesos entrenables que se ajustan durante el aprendizaje para detectar patrones específicos.
+## Convolución
+
+Es una operación fundamental en redes neuronales convolucionales (CNN) que permite extraer patrones locales de una entrada multidimensional, como imágenes. Consiste en aplicar pequeños filtros (o kernels) que recorren la entrada realizando productos punto en regiones locales, generando mapas de características que capturan bordes, texturas y otras estructuras. Esta operación reduce la cantidad de parámetros y mejora la eficiencia en el aprendizaje de representaciones jerárquicas.
 
 ### Fórmula de la convolución discreta 2D
 
@@ -57,9 +59,153 @@ El tamaño de la salida será:
 | W_out   | Ancho del mapa de características de salida       |
 | ⌊⌋      | Parte entera inferior (redondeo hacia abajo)      |
 
+### Funciones de activación en la salida de la convolución
+
+Después de aplicar la convolución, se utiliza una **función de activación** para introducir no linealidad en el modelo. Esto permite que la red aprenda relaciones más complejas que una combinación lineal de entradas. Las funciones de activación más comunes son:
+
+![](.docs/activaciones.png)
+
+- **ReLU (Rectified Linear Unit)**: convierte los valores negativos en cero, permitiendo una propagación eficiente del gradiente. Se usa por defecto en la mayoría de las capas convolucionales.
+- **Sigmoide**: transforma los valores en el rango (0, 1), útil en tareas de clasificación binaria, pero puede causar saturación en redes profundas.
+- **Tanh**: mapea los valores entre (-1, 1), útil cuando se desea que la salida esté centrada en cero, aunque también puede saturarse.
+
+Cada función se elige según la tarea: **ReLU** es la más común en capas ocultas, mientras que **sigmoide** o **tanh** pueden usarse en la capa de salida o en arquitecturas específicas.
+
+---
+
+## Pooling
+
+Es una operación que se aplica a los mapas de características (feature maps) generados por la convolución para reducir sus dimensiones espaciales (alto y ancho). Esta reducción ayuda a disminuir la cantidad de parámetros, reducir el costo computacional y controlar el overfitting. Además, permite que la red sea más robusta a pequeñas translaciones y deformaciones en la entrada.
+
+A diferencia de la convolución, el pooling no tiene pesos entrenables. En su lugar, aplica una función de agregación (como máximo, promedio o mínimo) sobre regiones locales del mapa de características.
+
+### Fórmula del pooling 2D
+
+La salida en la posición `(i, j)` del canal `c`, aplicando una operación de pooling sobre una entrada, se calcula como:
+
+![](.docs/f5.png)
+
+La función `POOL` puede ser `max`, `avg` o `min`, y se aplica sobre una región de tamaño K_H x K_W.
+
+| Símbolo   | Significado                                          |
+| --------- | ---------------------------------------------------- |
+| Y_c(i, j) | Valor en la posición (i,j) del canal de salida `c`   |
+| X_c       | Canal de entrada                                     |
+| K_H, K_W  | Altura y ancho de la ventana de pooling              |
+| S         | Stride (paso con el que se desplaza la ventana)      |
+| P         | Padding (ceros añadidos en los bordes de la entrada) |
+| POOL      | Operación de agregación (máximo, promedio o mínimo)  |
+
+### Fórmula para calcular el tamaño de salida del pooling
+
+Dada una entrada tridimensional de tamaño:
+
+![](.docs/f8.png)
+
+Y una operación de pooling definida por:
+
+- Tamaño de ventana K_H x K_W
+- Stride `S`
+- Padding `P`
+
+El tamaño de la salida será:
+
+![](.docs/f7.png)
+
+| Símbolo  | Significado                                   |
+| -------- | --------------------------------------------- |
+| C        | Número de canales (no cambia con pooling)     |
+| H_in     | Altura de la entrada                          |
+| W_in     | Ancho de la entrada                           |
+| K_H, K_W | Altura y ancho de la ventana de pooling       |
+| P        | Padding (relleno con ceros)                   |
+| S        | Stride (paso de desplazamiento de la ventana) |
+| H_out    | Altura del mapa de características de salida  |
+| W_out    | Ancho del mapa de características de salida   |
+| ⌊ ⌋      | Parte entera inferior (redondeo hacia abajo)  |
+
+### Tipos de pooling
+
+| Tipo de pooling     | Descripción                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Max pooling**     | Toma el valor máximo de cada región. Resalta las características más fuertes y es el más común en CNNs.        |
+| **Average pooling** | Calcula el promedio de los valores en cada región. Suaviza la representación y se usa para resúmenes globales. |
+| **Min pooling**     | Toma el valor mínimo de cada región. Es menos común, útil en contextos donde interesa conservar mínimos.       |
+
+---
+
+## Flatten
+
+La operación **Flatten** (aplanamiento) transforma una entrada multidimensional (por ejemplo, un tensor 3D de una imagen con canales, alto y ancho) en un **vector unidimensional**. Es una operación común en redes convolucionales justo antes de conectar con capas densas (**fully connected**), que esperan vectores como entrada en lugar de tensores.
+
+Flatten **no modifica los valores** del tensor, solo cambia su forma (shape), reorganizando los datos en un único vector.
+
+Este permite conectar las salidas de capas convolucionales (2D o 3D) con una o más capas totalmente conectadas (densas). Así, permite que las características extraídas espacialmente por la red sean procesadas por una red neuronal clásica para tareas como clasificación.
+
+### Fórmula para el tamaño de salida
+
+Si la entrada tiene dimensiones (C,H,W) ,entonces, después del flatten, el tamaño de salida será:
+
+![](.docs/f10.png)
+
+Es decir, se convierte en un vector de dimensión 1D:
+
+![](.docs/f9.png)
+
+| Símbolo | Significado                                       |
+| ------- | ------------------------------------------------- |
+| C       | Número de canales (depth)                         |
+| H       | Altura del mapa de características                |
+| W       | Ancho del mapa de características                 |
+| ×       | Multiplicación para obtener el tamaño total plano |
+
 ---
 
 ## Implementación en C++
+
+### Activaciones
+
+Este módulo implementa funciones de activación utilizadas en redes neuronales, junto con sus derivadas. Las funciones incluidas son **sigmoide**, **ReLU** y **tanh**, y están disponibles como funciones `inline` para mayor eficiencia en tiempo de ejecución. También se define el enumerador `ActivationType` para seleccionar fácilmente una función durante la construcción de capas.
+
+```cpp
+enum ActivationType
+{
+    SIGMOID,
+    RELU,
+    TANH
+};
+```
+
+---
+
+- Función `sigmoid`: Calcula la función logística, usada comúnmente en tareas de clasificación binaria.
+
+```cpp
+inline double sigmoid(double x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+```
+
+- Función `relu`: Aplica la unidad lineal rectificada, que convierte los valores negativos en cero.
+
+```cpp
+inline double relu(double x)
+{
+    return x > 0 ? x : 0;
+}
+```
+
+- Función `tanh_fn`: Aplica la tangente hiperbólica, una función centrada en cero que produce valores en el intervalo (-1, 1).
+
+```cpp
+inline double tanh_fn(double x)
+{
+    return std::tanh(x);
+}
+```
+
+---
 
 ### Clase `Conv2D`
 
@@ -83,7 +229,7 @@ private:
 
 public:
     Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
-           int stride = 1, int padding = 0);
+           int stride = 1, int padding = 0, ActivationType activation);
     std::vector<std::vector<std::vector<double>>> forward(
         const std::vector<std::vector<std::vector<double>>> &input);
     std::vector<std::vector<std::vector<double>>> backward(
@@ -100,15 +246,16 @@ Inicializa la capa convolucional con los parámetros:
 - `kernel_h`, `kernel_w`: altura y anchura del kernel.
 - `stride`: paso con el que se aplica el filtro (por defecto 1).
 - `padding`: número de ceros añadidos a los bordes (por defecto 0).
+- `activation`: función de activación (por defecto ReLU).
 
 Este constructor llama internamente a `initialize_filters()` para inicializar aleatoriamente los pesos y los sesgos de cada filtro.
 
 ```cpp
 Conv2D::Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
-               int stride, int padding)
+               int stride, int padding, ActivationType activation_)
     : in_channels(in_channels), out_channels(out_channels),
       kernel_h(kernel_h), kernel_w(kernel_w),
-      stride(stride), padding(padding)
+      stride(stride), padding(padding), activation(activation_)
 {
     initialize_filters();
 }
@@ -116,27 +263,33 @@ Conv2D::Conv2D(int in_channels, int out_channels, int kernel_h, int kernel_w,
 
 #### Método `initialize_filters()`
 
-Inicializa todos los pesos de los filtros con una distribución uniforme en el rango [-1.0, 1.0] usando `std::mt19937`. También inicializa los sesgos con valores aleatorios independientes.
+Inicializa los pesos de los filtros utilizando la **estrategia de Xavier (Glorot) uniforme**, que genera valores aleatorios en el rango `[-limit,limit]`, donde:
+
+![](.docs/f11.png)
+
+Esto ayuda a mantener la varianza de las activaciones estable durante el entrenamiento. Se utiliza `std::mt19937` como generador y `std::uniform_real_distribution` para la distribución. Los sesgos se inicializan en cero.
 
 ```cpp
 void Conv2D::initialize_filters()
 {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<double> dis(-1.0, 1.0);
+
+    int fan_in = in_channels * kernel_h * kernel_w;
+    int fan_out = out_channels * kernel_h * kernel_w;
+    double limit = std::sqrt(6.0 / (fan_in + fan_out));
+    std::uniform_real_distribution<double> dis(-limit, limit);
 
     filters.resize(out_channels, std::vector<std::vector<std::vector<double>>>(
                                      in_channels, std::vector<std::vector<double>>(
                                                       kernel_h, std::vector<double>(kernel_w))));
     biases.resize(out_channels, 0.0);
+
     for (int oc = 0; oc < out_channels; ++oc)
-    {
         for (int ic = 0; ic < in_channels; ++ic)
             for (int i = 0; i < kernel_h; ++i)
                 for (int j = 0; j < kernel_w; ++j)
                     filters[oc][ic][i][j] = dis(gen);
-        biases[oc] = dis(gen);
-    }
 }
 ```
 
@@ -187,7 +340,7 @@ std::vector<std::vector<std::vector<double>>> Conv2D::pad_input(
     - Se toma una **ventana** de tamaño igual al kernel.
     - Se realiza el **producto punto** entre los valores de la ventana y los pesos del filtro.
     - Se suma el **bias** correspondiente.
-    - El resultado se guarda en la posición correspondiente del tensor de salida.
+    - El resultado se pasa a la funcion de activación y se guarda en la posición correspondiente del tensor de salida.
 
 - Se repite el proceso para todos los filtros, obteniendo una salida final con `C_out` mapas de activación.
 
@@ -219,6 +372,12 @@ std::vector<std::vector<std::vector<double>>> Conv2D::forward(
                             sum += padded[ic][xi][xj] * filters[oc][ic][ki][kj];
                         }
                 }
+                if (activation == RELU)
+                    sum = relu(sum);
+                else if (activation == SIGMOID)
+                    sum = sigmoid(sum);
+                else if (activation == TANH)
+                    sum = tanh_fn(sum);
                 output[oc][i][j] = sum;
             }
     return output;
@@ -309,162 +468,252 @@ std::vector<std::vector<std::vector<double>>> Conv2D::backward(
 
 ---
 
-### Clase `main.cpp`
+Aquí tienes la documentación detallada para la clase `Pooling`, siguiendo el estilo y formato del ejemplo de `Conv2D`:
 
-#### Función `load_images_from_txt`
+---
 
-Esta función se encarga de leer un archivo de texto que contiene datos normalizados de imágenes, y reconstruirlos en un tensor 4D de la forma `[N][C][H][W]`, donde `N` es el número de imágenes, `C` los canales (por ejemplo 3 para RGB), `H` la altura y `W` el ancho. Cada imagen se compone de `C` bloques de `H` líneas, cada una con `W` valores reales. Esta organización permite convertir imágenes almacenadas en texto plano en tensores listos para ser procesados por capas convolucionales.
+### Clase `Pooling`
+
+La clase `Pooling` representa una capa de reducción espacial utilizada en redes neuronales convolucionales. Implementa el método `forward()` que aplica una operación de **submuestreo** (pooling) sobre regiones locales de una entrada tridimensional `[C][H][W]`. Soporta los tipos de pooling más comunes: **max**, **min** y **average**, con parámetros configurables como tamaño de ventana, `stride` y `padding`.
 
 ```cpp
-std::vector<std::vector<std::vector<std::vector<double>>>> load_images_from_txt(
-    const std::string &path_txt, int num_images, int channels, int height, int width)
+enum PoolingType
 {
-    std::ifstream file(path_txt);
-    if (!file.is_open())
-        throw std::runtime_error("Cannot open file: " + path_txt);
-    std::vector<std::vector<std::vector<std::vector<double>>>> images;
-    std::string line;
-    int line_count = 0;
-    std::vector<std::vector<std::vector<double>>> current_image(
-        channels, std::vector<std::vector<double>>(height, std::vector<double>(width)));
-    while (std::getline(file, line))
+    MAX,
+    MIN,
+    AVERAGE
+};
+
+class Pooling
+{
+private:
+    int kernel_h, kernel_w;
+    int stride;
+    int padding;
+    PoolingType type;
+
+    double pool_region(const std::vector<std::vector<double>> &region) const;
+
+public:
+    Pooling(int kernel_h, int kernel_w, int stride, int padding, PoolingType type);
+
+    std::vector<std::vector<std::vector<double>>> forward(
+        const std::vector<std::vector<std::vector<double>>> &input);
+};
+```
+
+#### Constructor `Pooling`
+
+Inicializa la capa de pooling con los parámetros:
+
+- `kernel_h`, `kernel_w`: altura y anchura de la ventana de pooling.
+- `stride`: paso de desplazamiento de la ventana.
+- `padding`: número de ceros añadidos alrededor de la entrada.
+- `type`: tipo de operación de pooling (`MAX`, `MIN`, `AVERAGE`).
+
+```cpp
+Pooling::Pooling(int kernel_h, int kernel_w, int stride, int padding, PoolingType type)
+    : kernel_h(kernel_h), kernel_w(kernel_w), stride(stride), padding(padding), type(type) {}
+```
+
+#### Método `pool_region()`
+
+Dado un bloque 2D (una región de la entrada), aplica la operación de pooling correspondiente:
+
+- **MAX**: devuelve el valor máximo.
+- **MIN**: devuelve el valor mínimo.
+- **AVERAGE**: devuelve el promedio.
+
+```cpp
+double Pooling::pool_region(const std::vector<std::vector<double>> &region) const
+{
+    std::vector<double> flat;
+    for (const auto &row : region)
+        flat.insert(flat.end(), row.begin(), row.end());
+
+    switch (type)
     {
-        std::istringstream ss(line);
-        double val;
-        int channel = line_count % channels;
-        for (int i = 0; i < height; ++i)
-            for (int j = 0; j < width; ++j)
-            {
-                if (!(ss >> val))
-                    throw std::runtime_error("Error reading value at line " + std::to_string(line_count + 1));
-                current_image[channel][i][j] = val;
-            }
-        line_count++;
-        if (line_count % channels == 0)
-        {
-            images.push_back(current_image);
-            if (images.size() >= static_cast<size_t>(num_images))
-                break;
-        }
+    case PoolingType::MAX:
+        return *std::max_element(flat.begin(), flat.end());
+    case PoolingType::MIN:
+        return *std::min_element(flat.begin(), flat.end());
+    case PoolingType::AVERAGE:
+        return std::accumulate(flat.begin(), flat.end(), 0.0) / flat.size();
+    default:
+        throw std::runtime_error("Unknown pooling type.");
     }
-    if (images.size() != static_cast<size_t>(num_images))
-        std::cerr << "Warning: Expected " << num_images << " images, but found " << images.size() << ".\n";
-    file.close();
-    return images;
 }
 ```
 
-#### Función `save_images_to_txt`
+#### Método `forward()`
 
-Recibe un conjunto de imágenes ya procesadas por la convolución (o cualquier otro paso intermedio) y las guarda en un archivo `.txt`. La estructura de salida sigue el mismo formato que la entrada: cada canal es escrito en bloques de líneas, lo que permite visualización o uso posterior (por ejemplo, conversión a PNG). La función imprime información útil sobre el tamaño de las imágenes procesadas para validación.
+Aplica el pooling sobre la entrada 3D de forma canal por canal, dividiendo la entrada en bloques locales según el tamaño de la ventana (`kernel_h`, `kernel_w`) y desplazándose según el `stride` (como en la convolución). Si se sale de los bordes, se aplica `padding` con ceros.
+
+El tamaño de salida se calcula como:
+
+![](.docs/f3.png)
 
 ```cpp
-void save_images_to_txt(
-    const std::string &output_path,
-    const std::vector<std::vector<std::vector<std::vector<double>>>> &images)
+std::vector<std::vector<std::vector<double>>> Pooling::forward(
+    const std::vector<std::vector<std::vector<double>>> &input)
 {
-    std::ofstream file(output_path);
-    if (!file.is_open())
-        throw std::runtime_error("Cannot open file for writing: " + output_path);
-    std::cout << "Saving with image size "
-              << images[0].size() << "x"
-              << images[0][0].size() << "x"
-              << images[0][0][0].size() << "\n";
-    for (const auto &image : images)
-        for (const auto &channel : image)
-        {
-            for (const auto &row : channel)
+    int channels = input.size();
+    int height = input[0].size();
+    int width = input[0][0].size();
+    int out_h = (height - kernel_h) / stride + 1;
+    int out_w = (width - kernel_w) / stride + 1;
+    std::vector<std::vector<std::vector<double>>> output(
+        channels,
+        std::vector<std::vector<double>>(out_h, std::vector<double>(out_w, 0.0)));
+    for (int c = 0; c < channels; ++c)
+        for (int i = 0; i < out_h; ++i)
+            for (int j = 0; j < out_w; ++j)
             {
-                for (double val : row)
-                    file << val << " ";
-                file << "\n";
+                std::vector<std::vector<double>> region(kernel_h, std::vector<double>(kernel_w, 0.0));
+                for (int ki = 0; ki < kernel_h; ++ki)
+                {
+                    for (int kj = 0; kj < kernel_w; ++kj)
+                    {
+                        int row = i * stride + ki - padding;
+                        int col = j * stride + kj - padding;
+
+                        if (row >= 0 && row < height && col >= 0 && col < width)
+                            region[ki][kj] = input[c][row][col];
+                        else
+                            region[ki][kj] = 0.0;
+                    }
+                }
+                output[c][i][j] = pool_region(region);
             }
-            file << "\n";
-        }
-    file.close();
-    std::cout << "Saved to " << output_path << ".\n";
-}
-```
-
-#### Función `main`
-
-La función principal define el flujo completo del procesamiento. Primero, se definen las dimensiones de entrada (28×28 para imágenes RGB). Luego, se cargan 6 imágenes desde un archivo de texto. Se crea una capa convolucional `Conv2D` con 3 canales de entrada y 2 de salida, usando un kernel de tamaño 3×3 con stride 1 y padding 1. A cada imagen se le aplica la operación de `forward`, generando mapas de activación que se almacenan como nuevas imágenes. Finalmente, las imágenes resultantes se guardan en un archivo de salida para ser visualizadas o procesadas posteriormente.
-
-```cpp
-int main()
-{
-    const int height = 28, width = 28;
-    auto images = load_images_from_txt("./output/input.txt", 6, 3, height, width);
-    std::cout << "Loaded image of size "
-              << images[0].size() << "x"
-              << images[0][0].size() << "x"
-              << images[0][0][0].size() << "\n";
-    Conv2D conv(3, 2, 3, 3, 1, 1);
-    auto image_processed = images;
-    for (size_t i = 0; i < image_processed.size(); ++i)
-        image_processed[i] = conv.forward(images[i]);
-    save_images_to_txt("./output/output_conv.txt", image_processed);
-    return 0;
+    return output;
 }
 ```
 
 ---
 
-## Implementación en Python
+### Clase `Flatten`
 
-### Script `image_txt.py`
+La clase `Flatten` representa una capa que convierte una entrada tridimensional (`[C][H][W]`) en un vector unidimensional. Además, `Flatten` permite invertir la operación mediante un método de `reshape()` que restaura la forma original.
 
-Convierte imágenes RGB (en formato `.jpg` o `.jpeg`) ubicados en `database` del dataset de SimpsonMNIST a un archivo de texto plano, normalizando sus valores a un rango entre 0 y 1. Para cada imagen, se separan los tres canales de color (Rojo, Verde y Azul), y cada canal se aplana en un vector unidimensional que se escribe como una línea en el archivo de salida. El archivo resultante contiene tres líneas por imagen, correspondientes a sus canales, en orden R-G-B. Además, se asegura de crear automáticamente una carpeta de salida (`output`) si no existe, y guarda allí el archivo `input.txt`, que es utilizado como entrada para el main en C++.
+```cpp
+class Flatten
+{
+private:
+    int channels, height, width;
 
-```python
-def images_to_txt(image_folder, output_folder="output", output_filename="input.txt"):
-    os.makedirs(output_folder, exist_ok=True)
-    output_path = os.path.join(output_folder, output_filename)
-    with open(output_path, 'w') as f:
-        for filename in sorted(os.listdir(image_folder)):
-            if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
-                image_path = os.path.join(image_folder, filename)
-                img = Image.open(image_path).convert('RGB')
-                arr = np.array(img) / 255.0
-                for channel in range(3):
-                    flat = arr[:, :, channel].flatten()
-                    line = ' '.join(f'{val:.6f}' for val in flat)
-                    f.write(line + '\n')
-    print(f"Output written to {output_path}")
+public:
+    std::vector<double> forward(const std::vector<std::vector<std::vector<double>>> &input);
+    std::vector<std::vector<std::vector<double>>> reshape(const std::vector<double> &input_flat);
+};
 ```
 
-### Script `txt_image.py`
+#### Método `forward()`
 
-Recibe como entrada un archivo de texto con los resultados de una operación de convolución y reconstruye imágenes visualizables a partir de los datos. Cada conjunto de líneas del archivo representa los canales de una imagen, donde cada canal ocupa `height` líneas consecutivas. El script divide el archivo en múltiples imágenes, guarda cada canal como una imagen en escala de grises (`channel0.png`, `channel1.png`, etc.) y, si la cantidad de canales es 3, también genera una imagen RGB combinada (`merged_rgb.png`). Para cada imagen, se crea una subcarpeta (`img0`, `img1`, etc.) dentro del directorio de salida (`img_conv` por defecto). Además, aplica normalización a cada canal para escalar los valores a un rango `[0, 255]` y convertirlos en imágenes `uint8` utilizables.
+Convierte un tensor 3D `[C][H][W]` a un vector 1D de tamaño `C × H × W`. Guarda internamente la forma original para permitir una reconstrucción posterior.
 
-```python
-def load_conv_output_to_images(txt_file, channels, height, output_root="img_conv"):
-    with open(txt_file, 'r') as f:
-        lines = [line.strip() for line in f if line.strip()]
-    total_lines_per_image = channels * height
-    total_images = len(lines) // total_lines_per_image
-    assert len(lines) % total_lines_per_image == 0, "Number of lines in the file is not a multiple of (channels * height)"
-    os.makedirs(output_root, exist_ok=True)
-    for img_idx in range(total_images):
-        start_line = img_idx * total_lines_per_image
-        img_folder = os.path.join(output_root, f"img{img_idx}")
-        os.makedirs(img_folder, exist_ok=True)
-        channels_data = []
-        for ch in range(channels):
-            ch_start = start_line + ch * height
-            ch_end = ch_start + height
-            channel_lines = lines[ch_start:ch_end]
-            arr = [list(map(float, line.split())) for line in channel_lines]
-            img = np.array(arr)
-            img_norm = (img - img.min()) / (img.max() - img.min() + 1e-8)
-            img_uint8 = (img_norm * 255).astype(np.uint8)
-            Image.fromarray(img_uint8).save(os.path.join(img_folder, f"channel{ch}.png"))
-            channels_data.append(img_norm)
-        if channels == 3:
-            merged = np.stack(channels_data, axis=-1)
-            merged_uint8 = (merged * 255).astype(np.uint8)
-            Image.fromarray(merged_uint8).save(os.path.join(img_folder, "merged_rgb.png"))
-    print(f"Completed saving images from conv output to {output_root}.")
+```cpp
+std::vector<double> Flatten::forward(const std::vector<std::vector<std::vector<double>>> &input)
+{
+    channels = input.size();
+    height = input[0].size();
+    width = input[0][0].size();
+
+    std::vector<double> flat;
+    flat.reserve(channels * height * width);
+
+    for (int c = 0; c < channels; ++c)
+        for (int i = 0; i < height; ++i)
+            for (int j = 0; j < width; ++j)
+                flat.push_back(input[c][i][j]);
+
+    return flat;
+}
+```
+
+#### Método `reshape()`
+
+Reconstruye el tensor tridimensional original `[C][H][W]` a partir del vector plano generado por `forward()`.
+
+```cpp
+std::vector<std::vector<std::vector<double>>> Flatten::reshape(const std::vector<double> &input_flat)
+{
+    if ((int)input_flat.size() != channels * height * width)
+        throw std::runtime_error("Input size does not match stored shape.");
+    std::vector<std::vector<std::vector<double>>> output(
+        channels, std::vector<std::vector<double>>(height, std::vector<double>(width)));
+    int idx = 0;
+    for (int c = 0; c < channels; ++c)
+        for (int i = 0; i < height; ++i)
+            for (int j = 0; j < width; ++j)
+                output[c][i][j] = input_flat[idx++];
+
+    return output;
+}
+```
+
+---
+
+### Función `main`
+
+La función `main()` demuestra el uso de una red neuronal convolucional mínima compuesta por tres etapas secuenciales: **convolución (`Conv2D`)**, **pooling (`Pooling`)** y **aplanamiento (`Flatten`)**. Utiliza una imagen sintética de tamaño `3×3` con `3` canales (por ejemplo, similar a RGB) para ilustrar el flujo de datos a través de estas capas.
+
+```cpp
+int main()
+{
+    const int height = 3, width = 3, channels = 3;
+    std::vector<std::vector<std::vector<double>>> input(channels, std::vector<std::vector<double>>(height, std::vector<double>(width)));
+    for (int c = 0; c < channels; ++c)
+        for (int i = 0; i < height; ++i)
+            for (int j = 0; j < width; ++j)
+                input[c][i][j] = c * 10 + i * 3 + j + 1;
+    std::cout << "Imagen de entrada (3 canales, 3x3):\n";
+    for (int c = 0; c < channels; ++c)
+    {
+        std::cout << "Canal " << c << ":\n";
+        for (const auto &row : input[c])
+        {
+            for (double val : row)
+                std::cout << val << " ";
+            std::cout << "\n";
+        }
+        std::cout << "\n";
+    }
+    Conv2D conv(3, 3, 2, 2, 1, 0, ActivationType::RELU);
+    auto conv_output = conv.forward(input);
+    std::cout << "Salida de la convolución (3 canales):\n";
+    for (int c = 0; c < conv_output.size(); ++c)
+    {
+        std::cout << "Canal " << c << ":\n";
+        for (const auto &row : conv_output[c])
+        {
+            for (double val : row)
+                std::cout << val << " ";
+            std::cout << "\n";
+        }
+        std::cout << "\n";
+    }
+    Pooling pool(2, 2, 1, 0, PoolingType::MAX);
+    auto pooled_output = pool.forward(conv_output);
+    std::cout << "Salida del pooling (MAX):\n";
+    for (int c = 0; c < pooled_output.size(); ++c)
+    {
+        std::cout << "Canal " << c << ":\n";
+        for (const auto &row : pooled_output[c])
+        {
+            for (double val : row)
+                std::cout << val << " ";
+            std::cout << "\n";
+        }
+        std::cout << "\n";
+    }
+    Flatten flatten;
+    auto flat_output = flatten.forward(pooled_output);
+    std::cout << "Salida del flatten (vector 1D):\n";
+    for (double val : flat_output)
+        std::cout << val << " ";
+    std::cout << "\n";
+    return 0;
+}
 ```
 
 ---
@@ -479,33 +728,13 @@ make run
 
 ![](.docs/make.png)
 
-Este comando compila el proyecto y crea el ejecutable `conv2d`.
+Este comando compila el proyecto y crea el ejecutable `main`.
 
-Luego, se convierten las imágenes en texto con:
-
-```bash
-python image_txt.py
-```
-
-Esto genera un archivo `input.txt` con los valores normalizados de las imágenes de entrada.
-
-A continuación, se ejecuta el programa C++ que realiza la convolución:
+Se ejecuta el programa C++ con las tres etapas secuenciales:
 
 ```bash
-./build/conv2d
+./build/main
 ```
-
-Este proceso carga las imágenes, aplica los filtros y guarda la salida en `output_conv.txt`.
-
-Finalmente, se reconstruyen las imágenes a partir de la salida con:
-
-```bash
-python txt_image.py
-```
-
-![](.docs/exec.png)
-
-Este último paso guarda los resultados por carpeta, separando los canales y generando imágenes que muestran la salida de la convolución.
 
 ---
 
@@ -513,67 +742,58 @@ Este último paso guarda los resultados por carpeta, separando los canales y gen
 
 ### Ejemplo 1
 
-Dada una imagen de entrada de tamaño **28×28 píxeles** con **3 canales (RGB)**:
+La siguiente tabla resume el flujo de procesamiento de una entrada tridimensional a través de una red simple compuesta por una capa convolucional, una de pooling y un aplanamiento final:
 
-![](.docs/original.png)
+| Etapa       | Dimensión (C × H × W) | Operación realizada                                              | Función aplicada |
+| ----------- | --------------------- | ---------------------------------------------------------------- | ---------------- |
+| **Entrada** | `3 × 3 × 3`           | Tensor de entrada tridimensional                                 | —                |
+| **Conv2D**  | `3 × 2 × 2`           | Convolución con kernel de tamaño `2×2`, stride `1` y sin padding | **ReLU**         |
+| **Pooling** | `3 × 1 × 1`           | Max pooling con ventana `2×2`, stride `1`, sin padding           | **MAX**          |
+| **Flatten** | `vector[3]`           | Conversión del tensor 3D a un vector 1D                          | —                |
 
-Aplicamos una convolución con los siguientes parámetros:
+Y se muestra la ejecución del código con estos datos de entrada y configuraciones:
 
-- **Tamaño del kernel:** 3×3
-- **Stride:** 1
-- **Padding:** 1
-- **Canales de salida:** 2
+![](.docs/example1.png)
 
-Para calcular el tamaño de la salida, utilizamos la siguiente fórmula:
-
-![](.docs/f4.png)
-
-Por lo tanto, la salida de la operación de convolución tiene forma **[2 × 28 × 28]**, es decir, **dos canales** de 28×28.
-
-A continuación se visualizan los dos canales de salida como imágenes en escala de grises:
-
-![](.docs/channel0.png)
-
-![](.docs/channel1.png)
-
-Cada canal representa la activación del filtro correspondiente sobre la imagen de entrada. Estos mapas de características destacan distintos patrones detectados por la red, como bordes o texturas.
+---
 
 ### Ejemplo 2
 
-Dada una imagen de entrada de tamaño **28×28 píxeles** con **3 canales (RGB)**:
+| Etapa       | Dimensión (C × H × W) | Operación realizada                                              | Función aplicada |
+| ----------- | --------------------- | ---------------------------------------------------------------- | ---------------- |
+| **Entrada** | `3 × 3 × 3`           | Tensor de entrada tridimensional                                 | —                |
+| **Conv2D**  | `4 × 2 × 2`           | Convolución con kernel `2×2`, stride `1`, padding `0`, 4 filtros | **SIGMOID**      |
+| **Pooling** | `4 × 1 × 1`           | Average pooling con ventana `2×2`, stride `1`, padding `0`       | **AVERAGE**      |
+| **Flatten** | `vector[4]`           | Aplanamiento del tensor 3D                                       | —                |
 
-![](.docs/original.png)
+Y se muestra la ejecución del código con estos datos de entrada y configuraciones:
 
-Aplicamos una convolución con los siguientes parámetros:
+![](.docs/example2.png)
 
-- **Tamaño del kernel:** 2×2
-- **Stride:** 2
-- **Padding:** 0
-- **Canales de salida:** 2
+---
 
-Para calcular el tamaño de la salida usamos la fórmula de la convolución:
+### Ejemplo 3
 
-![](.docs/f6.png)
+| Etapa       | Dimensión (C × H × W) | Operación realizada                                              | Función aplicada |
+| ----------- | --------------------- | ---------------------------------------------------------------- | ---------------- |
+| **Entrada** | `3 × 3 × 3`           | Tensor de entrada tridimensional                                 | —                |
+| **Conv2D**  | `2 × 4 × 4`           | Convolución con kernel `2×2`, stride `1`, padding `1`, 2 filtros | **TANH**         |
+| **Pooling** | `2 × 3 × 3`           | Min pooling con ventana `2×2`, stride `1`                        | **MIN**          |
+| **Flatten** | `vector[12]`          | Aplanamiento del tensor 3D                                       | —                |
 
-Por lo tanto, la salida tiene forma **[2 × 14 × 14]**, es decir, **dos canales** de 14×14 píxeles.
+Y se muestra la ejecución del código con estos datos de entrada y configuraciones:
 
-A continuación se visualizan los dos canales de salida como imágenes en escala de grises:
-
-![](.docs/channel0_1.png)
-
-![](.docs/channel1_1.png)
-
-Cada canal representa un mapa de activaciones generado por un filtro diferente, aplicado sobre la imagen de entrada. Debido al stride 2, la salida tiene menor resolución, resaltando solo las regiones más significativas de la imagen original.
+![](.docs/example3.png)
 
 ---
 
 ## Conclusiones
 
-La implementación de la convolución en C++ permite aplicar filtros sobre imágenes RGB de forma precisa, respetando parámetros como el tamaño del kernel, el _stride_ y el _padding_. Al aplicar la fórmula de cálculo del tamaño de salida, se comprobó que los resultados concuerdan con lo esperado: en el caso de usar un kernel de 3×3, _stride_ 1 y _padding_ 1 sobre imágenes de 28×28, la salida mantiene sus dimensiones. Esto valida el correcto funcionamiento del algoritmo de barrido del filtro y su implementación.
+La implementación de una red convolucional en C++ demostró ser eficaz y flexible, permitiendo construir paso a paso una tubería que incluye convolución, activación, pooling y flatten. Cada componente fue diseñado para funcionar con tensores multicanal y configurable mediante parámetros como el tamaño del kernel, el _stride_, el _padding_ y el tipo de operación. Se validó que las salidas cumplen con las fórmulas teóricas, confirmando la correcta manipulación espacial de los tensores en cada etapa.
 
-Las salidas generadas por la convolución muestran cómo cada filtro aprende a detectar distintos patrones de la imagen, como bordes, regiones homogéneas o texturas. En el **Ejemplo 2**, se empleó un kernel 2×2 con _stride_ 2 y sin _padding_, lo que redujo las dimensiones de la salida a 14×14, evidenciando cómo los hiperparámetros afectan directamente la resolución del mapa de características. Estas salidas se convierten nuevamente en imágenes, canal por canal, lo cual permite observar visualmente el comportamiento de cada filtro de forma clara y estructurada.
+Los resultados obtenidos en los **tres ejemplos ejecutados** evidencian que los tamaños de salida fueron coherentes con los esperados. En el **Ejemplo 1**, con entrada `3×3×3`, convolución con ReLU y kernel `2×2`, la salida fue `3×2×2`, y luego el pooling con _MAX_ redujo correctamente a `3×1×1`, resultando en un vector de tamaño 3 tras el flatten. En el **Ejemplo 2**, al usar 4 filtros con activación _Sigmoid_, la salida fue `4×2×2`, que tras _AVERAGE pooling_ pasó a `4×1×1`, resultando en un vector de tamaño 4. Finalmente, el **Ejemplo 3**, con padding 1 y activación _Tanh_, generó una salida de `2×4×4` y luego de _MIN pooling_, `2×3×3`, dando un vector de longitud 12, todos correctamente verificados con las fórmulas de salida.
 
-Además, todo el proceso se realiza de forma dinámica, como se ve en el ejemplo de `main.cpp`, donde se cargan imágenes desde un archivo, se aplica la convolución con distintos parámetros y se guarda la salida sin necesidad de modificar manualmente el código para cada imagen o configuración. Esto demuestra que el sistema es flexible y escalable, permitiendo experimentar con diferentes arquitecturas y ser integrado en una red convolucional más compleja o en sistemas de visión por computadora.
+En conjunto, esta arquitectura modular no solo permite observar el comportamiento interno de cada operación, sino que además facilita la experimentación con diferentes configuraciones. La correcta correspondencia entre la teoría y los resultados prácticos confirma que la implementación es precisa y reutilizable. Esto la convierte en una base sólida para integrar redes más profundas o tareas más complejas, como clasificación, segmentación o análisis de imágenes en sistemas embebidos o de visión por computadora.
 
 ## Author
 

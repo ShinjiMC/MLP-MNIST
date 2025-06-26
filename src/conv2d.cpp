@@ -20,7 +20,7 @@ void Conv2D::initialize_filters()
     int fan_in = in_channels * kernel_h * kernel_w;
     int fan_out = out_channels * kernel_h * kernel_w;
     double limit = std::sqrt(6.0 / (fan_in + fan_out));
-    std::uniform_real_distribution<double> dis(0, limit);
+    std::uniform_real_distribution<double> dis(-limit, limit);
     filters.resize(out_channels, std::vector<std::vector<std::vector<double>>>(
                                      in_channels, std::vector<std::vector<double>>(
                                                       kernel_h, std::vector<double>(kernel_w))));
