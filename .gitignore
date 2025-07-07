@@ -4,4 +4,5 @@ perceptron
 *.pdf
 output
 database/MNIST/*.txt
-test/*.txtdatabase/FASHION/*.txt
+test/*.txt
+database/FASHION/*.txt
