@@ -3,6 +3,7 @@
 #include <ctime>
 #include <iostream>
 #include <fstream>
+#include <chrono>
 #include <filesystem>
 #include "dropout.hpp"
 #include "optimizer.hpp"
@@ -46,7 +47,7 @@ public:
     }
 
     void train(std::vector<std::vector<double>> &images, std::vector<int> &labels,
-               double &average_loss, double &train_accuracy);
+               double &average_loss);
     void test(const std::vector<std::vector<double>> &images, const std::vector<int> &labels, double &test_accuracy);
     void train_test(std::vector<std::vector<double>> &train_images, std::vector<int> &train_labels,
                     const std::vector<std::vector<double>> &test_images, const std::vector<int> &test_labels,
@@ -54,4 +55,6 @@ public:
     void save_data(const std::string &filename) const;
     bool load_data(const std::string &filename);
     void test_info(const std::vector<std::vector<double>> &X_test, const std::vector<int> &y_test);
+    void evaluate(std::vector<std::vector<double>> &images, std::vector<int> &labels,
+                  double &train_accuracy);
 };

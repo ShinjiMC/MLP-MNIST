@@ -38,4 +38,5 @@ public:
         for (const auto &weight : weights)
             penalty += weight * weight;
     }
+    double forward(const std::vector<double> &input) const;
 };
